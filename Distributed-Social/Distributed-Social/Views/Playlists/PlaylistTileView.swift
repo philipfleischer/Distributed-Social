@@ -14,6 +14,9 @@ struct PlaylistTileView: View {
     var size: CGFloat? = nil        // nil → flexible (grid) sizing
     var isActive: Bool = false      // true when this playlist is playing
 
+    @EnvironmentObject var themeStore: ThemeStore
+    private var theme: AppTheme { themeStore.theme }
+
     private var seed: Int {
         var value = 0
         for scalar in playlist.id.uuidString.unicodeScalars {
@@ -36,25 +39,25 @@ struct PlaylistTileView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .overlay(
                     RoundedRectangle(cornerRadius: 18)
-                        .strokeBorder(Color.skyBlue, lineWidth: isActive ? 3 : 0)
+                        .strokeBorder(theme.textPrimary, lineWidth: isActive ? 3 : 0)
                 )
                 .overlay(alignment: .topTrailing) {
                     if isActive {
                         Image(systemName: "waveform")
                             .font(.subheadline.weight(.bold))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(theme.backgroundColors.first ?? .black)
                             .padding(6)
-                            .background(Color.skyBlue)
+                            .background(theme.textPrimary)
                             .clipShape(Circle())
                             .padding(8)
                     }
                 }
                 .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
 
-            MarqueeText(text: playlist.name, font: .headline, color: .skyBlue)
+            MarqueeText(text: playlist.name, font: .headline, color: theme.textPrimary)
             Text("\(playlist.sortedItems.count) item\(playlist.sortedItems.count == 1 ? "" : "s")")
                 .font(.subheadline)
-                .foregroundStyle(Color.inkSecondary)
+                .foregroundStyle(theme.textSecondary)
         }
     }
 

@@ -7,6 +7,8 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
+    @EnvironmentObject var themeStore: ThemeStore
+    private var theme: AppTheme { themeStore.theme }
 
     var body: some View {
         HStack(spacing: 16) {
@@ -17,11 +19,11 @@ struct MiniPlayerView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(playerVM.currentItem?.displayName ?? "")
                     .font(.headline)
-                    .foregroundStyle(Color.skyBlue)
+                    .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
                 Text(playerVM.currentTime.formattedTime + " / " + playerVM.duration.formattedTime)
                     .font(.subheadline)
-                    .foregroundStyle(Color.inkSecondary)
+                    .foregroundStyle(theme.textSecondary)
             }
 
             Spacer()
@@ -39,17 +41,17 @@ struct MiniPlayerView: View {
                     .font(.title3)
             }
         }
-        .foregroundStyle(Color.skyBlue)
+        .foregroundStyle(theme.textPrimary)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.sakuraPink.opacity(0.35), lineWidth: 1)
+                .strokeBorder(theme.textPrimary.opacity(0.35), lineWidth: 1)
         )
         .padding(.horizontal, 8)
-        .shadow(color: Color.skyBlue.opacity(0.25), radius: 6, y: 2)
+        .shadow(color: theme.textPrimary.opacity(0.25), radius: 6, y: 2)
         .onTapGesture { playerVM.isFullPlayerPresented = true }
     }
 }

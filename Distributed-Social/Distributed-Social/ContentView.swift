@@ -22,12 +22,9 @@ struct ContentView: View {
                 PlaylistsView()
                     .tabItem { Label("Playlists", systemImage: "list.bullet") }
                     .tag(1)
-                ImportView()
-                    .tabItem { Label("Import", systemImage: "square.and.arrow.down") }
-                    .tag(2)
                 SettingsView()
                     .tabItem { Label("Settings", systemImage: "gear") }
-                    .tag(3)
+                    .tag(2)
             }
 
             if playerVM.isFullPlayerPresented {
