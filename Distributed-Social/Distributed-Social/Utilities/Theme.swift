@@ -16,20 +16,32 @@ extension Color {
     static let sakuraPink = Color(red: 1.0, green: 0.718, blue: 0.773)
     /// A softer, near-white background tint.
     static let softWhite = Color(red: 0.980, green: 0.992, blue: 1.0)
+
+    /// Deterministic pastel hue derived from a UUID, so every media item
+    /// gets its own stable artwork color across launches.
+    static func artworkHue(for id: UUID, offset: Double = 0) -> Color {
+        var seed = 0
+        for scalar in id.uuidString.unicodeScalars {
+            seed = (seed &* 31 &+ Int(scalar.value)) & 0xFFFFFF
+        }
+        let hue = (Double(seed % 360) / 360 + offset).truncatingRemainder(dividingBy: 1)
+        return Color(hue: hue, saturation: 0.50, brightness: 0.92)
+    }
 }
 
 extension LinearGradient {
-    /// A gentle top-to-bottom wash: sakura pink fading into sky blue over white.
-    /// Used as a full-screen background for a light, summery feel.
+    /// Full-screen wash: sakura pink at the top melting into sky blue below —
+    /// a clear, summery pink→blue transition.
     static var summerSky: LinearGradient {
         LinearGradient(
             colors: [
-                Color.sakuraPink.opacity(0.18),
-                Color.softWhite,
-                Color.skyBlue.opacity(0.20)
+                Color.sakuraPink.opacity(0.65),
+                Color(red: 1.0, green: 0.882, blue: 0.898),
+                Color(red: 0.784, green: 0.906, blue: 0.965),
+                Color.skyBlue.opacity(0.65)
             ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            startPoint: .top,
+            endPoint: .bottom
         )
     }
 }

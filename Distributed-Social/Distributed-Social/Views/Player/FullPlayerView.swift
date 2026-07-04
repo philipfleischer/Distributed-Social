@@ -19,28 +19,16 @@ struct FullPlayerView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .padding(.horizontal)
                         .padding(.top, 20)
-                } else {
-                    // Artwork / icon
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.sakuraPink.opacity(0.35), Color.skyBlue.opacity(0.35)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 240, height: 240)
-                        Image(systemName: playerVM.currentItem?.mediaType.systemImage ?? "music.note")
-                            .font(.system(size: 80))
-                            .foregroundStyle(Color.deepSky)
-                    }
-                    .padding(.top, 20)
+                } else if let item = playerVM.currentItem {
+                    // Unique per-item artwork, matching the library rows.
+                    MediaArtworkView(item: item, size: 240)
+                        .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+                        .padding(.top, 20)
                 }
 
                 // Title
                 Text(playerVM.currentItem?.displayName ?? "")
-                    .font(.title2)
+                    .font(.title)
                     .fontWeight(.semibold)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)

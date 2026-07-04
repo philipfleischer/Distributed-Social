@@ -9,6 +9,7 @@
 
 import AVFoundation
 import Combine
+import MediaPlayer
 import UIKit
 
 final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol {
@@ -39,6 +40,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
         addTimeObserver()
         addEndObserver()
         addResignObserver()
+        setupRemoteCommands()
     }
 
     // MARK: - Setup
@@ -79,6 +81,74 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
         }
     }
 
+    // MARK: - Lock screen / Control Center (Now Playing)
+
+    /// Wires the lock-screen and Control Center transport controls.
+    private func setupRemoteCommands() {
+        let center = MPRemoteCommandCenter.shared()
+
+        center.playCommand.addTarget { [weak self] _ in
+            guard let self, !self.isPlaying else { return .commandFailed }
+            self.togglePlayPause()
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            guard let self, self.isPlaying else { return .commandFailed }
+            self.togglePlayPause()
+            return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.togglePlayPause()
+            return .success
+        }
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            self?.nextTrack()
+            return .success
+        }
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            self?.previousTrack()
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self,
+                  let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            self.seek(to: positionEvent.positionTime)
+            return .success
+        }
+        center.skipForwardCommand.preferredIntervals = [NSNumber(value: Constants.Playback.skipInterval)]
+        center.skipForwardCommand.addTarget { [weak self] _ in
+            self?.skip(by: Constants.Playback.skipInterval)
+            return .success
+        }
+        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Constants.Playback.skipInterval)]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            self?.skip(by: -Constants.Playback.skipInterval)
+            return .success
+        }
+    }
+
+    /// Publishes the current track metadata and position to the system so the
+    /// lock screen / Dynamic Island player appears and stays in sync.
+    private func updateNowPlayingInfo() {
+        guard let item = currentItem else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: item.displayName,
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(playbackSpeed) : 0.0,
+            MPNowPlayingInfoPropertyMediaType: item.mediaType == .audio
+                ? MPNowPlayingInfoMediaType.audio.rawValue
+                : MPNowPlayingInfoMediaType.video.rawValue
+        ]
+        info[MPMediaItemPropertyArtist] = "Distributed-Social"
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
     // MARK: - Playback end handling
 
     private func handlePlaybackEnd() {
@@ -88,6 +158,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
             player.seek(to: .zero)
             player.play()
             player.rate = playbackSpeed
+            updateNowPlayingInfo()
         case .all:
             // Advance; wrap back to the first item at the end.
             let nextIndex = currentIndex + 1
@@ -103,6 +174,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
                 loadItem(at: nextIndex, autoPlay: true)
             } else {
                 isPlaying = false
+                updateNowPlayingInfo()
             }
         }
     }
@@ -130,6 +202,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
             player.rate = playbackSpeed
             isPlaying = true
         }
+        updateNowPlayingInfo()
     }
 
     func skip(by seconds: TimeInterval) {
@@ -156,12 +229,15 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
 
     func seek(to position: TimeInterval) {
         let time = CMTime(seconds: position, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        player.seek(to: time)
+        player.seek(to: time) { [weak self] _ in
+            self?.updateNowPlayingInfo()
+        }
     }
 
     func setSpeed(_ speed: Float) {
         playbackSpeed = speed
         if isPlaying { player.rate = speed }
+        updateNowPlayingInfo()
     }
 
     func toggleShuffle() {
@@ -207,6 +283,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
             if let cmDuration = try? await playerItem.asset.load(.duration) {
                 await MainActor.run {
                     self?.duration = cmDuration.seconds.isNaN ? 0 : cmDuration.seconds
+                    self?.updateNowPlayingInfo()
                 }
             }
         }
@@ -216,6 +293,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
             player.rate = playbackSpeed
             isPlaying = true
         }
+        updateNowPlayingInfo()
     }
 
     deinit {

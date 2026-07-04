@@ -27,7 +27,7 @@ struct ContentView: View {
 
             if playerVM.currentItem != nil {
                 MiniPlayerView()
-                    .padding(.bottom, 49) // clear the tab bar
+                    .padding(.bottom, 64) // sit clearly above the tab bar
             }
         }
         .sheet(isPresented: $playerVM.isFullPlayerPresented) {

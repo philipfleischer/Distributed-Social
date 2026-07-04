@@ -29,28 +29,19 @@ struct AudioLibraryView: View {
                     )
                 } else {
                     List(items) { item in
-                        AudioRowView(item: item) {
-                            playerVM.play(item: item, in: items)
+                        AudioRowView(
+                            item: item,
+                            isCurrent: playerVM.currentItem?.id == item.id,
+                            isPlaying: playerVM.isPlaying,
+                            onPlay: { handlePlay(item, in: items) }
+                        ) {
+                            menu(for: item)
                         }
                         .listRowBackground(Color.clear)
-                        .contextMenu {
-                            MediaItemContextMenu(
-                                item: item,
-                                folders: folders,
-                                onAddToPlaylist: { itemForPlaylist = item },
-                                onMoveToFolder: { folder in
-                                    item.folder = folder
-                                },
-                                onDelete: {
-                                    mediaLibraryService.deleteMediaItem(
-                                        item, fileImportService: FileImportService(), in: modelContext)
-                                }
-                            )
-                        }
+                        .contextMenu { menu(for: item) }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                mediaLibraryService.deleteMediaItem(
-                                    item, fileImportService: FileImportService(), in: modelContext)
+                                delete(item)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -67,9 +58,35 @@ struct AudioLibraryView: View {
             }
         }
     }
+
+    /// Tapping the current item toggles play/pause; any other item starts playing.
+    private func handlePlay(_ item: MediaItem, in items: [MediaItem]) {
+        if playerVM.currentItem?.id == item.id {
+            playerVM.togglePlayPause()
+        } else {
+            playerVM.play(item: item, in: items)
+        }
+    }
+
+    private func delete(_ item: MediaItem) {
+        mediaLibraryService.deleteMediaItem(
+            item, fileImportService: FileImportService(), in: modelContext)
+    }
+
+    @ViewBuilder
+    private func menu(for item: MediaItem) -> some View {
+        MediaItemContextMenu(
+            item: item,
+            folders: folders,
+            onAddToPlaylist: { itemForPlaylist = item },
+            onMoveToFolder: { folder in item.folder = folder },
+            onDelete: { delete(item) }
+        )
+    }
 }
 
-/// Shared context-menu content for a media item in the audio/video libraries.
+/// Shared menu content for a media item in the audio/video libraries
+/// (used by both the "⋮" button and the long-press context menu).
 struct MediaItemContextMenu: View {
     let item: MediaItem
     let folders: [Folder]
