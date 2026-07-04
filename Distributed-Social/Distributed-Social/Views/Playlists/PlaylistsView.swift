@@ -14,8 +14,10 @@ struct PlaylistsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
     @EnvironmentObject var playerVM: PlayerViewModel
+    @EnvironmentObject var themeStore: ThemeStore
     @Query(sort: \Playlist.name) private var playlists: [Playlist]
 
+    @State private var searchText = ""
     @State private var showCreateSheet = false
     @State private var newName = ""
     @State private var newType: MediaType = .audio
@@ -29,6 +31,14 @@ struct PlaylistsView: View {
         GridItem(.flexible(), spacing: 16)
     ]
 
+    private var theme: AppTheme { themeStore.theme }
+
+    /// Playlists matching the search text (all of them when not searching).
+    private var filteredPlaylists: [Playlist] {
+        guard !searchText.isEmpty else { return playlists }
+        return playlists.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -40,9 +50,12 @@ struct PlaylistsView: View {
                             description: Text("Tap + to create your first playlist.")
                         )
                         .padding(.top, 80)
+                    } else if filteredPlaylists.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                            .padding(.top, 80)
                     } else {
-                        section(title: "Audio Playlists", items: playlists.filter { $0.mediaType == .audio })
-                        section(title: "Video Playlists", items: playlists.filter { $0.mediaType == .video })
+                        section(title: "Audio Playlists", items: filteredPlaylists.filter { $0.mediaType == .audio })
+                        section(title: "Video Playlists", items: filteredPlaylists.filter { $0.mediaType == .video })
                     }
                 }
                 .padding(.horizontal)
@@ -51,6 +64,7 @@ struct PlaylistsView: View {
             }
             .summerBackground()
             .navigationTitle("Playlists")
+            .searchable(text: $searchText, prompt: "Playlist name")
             .toolbar {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
@@ -77,7 +91,7 @@ struct PlaylistsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(title)
                     .font(.title2).fontWeight(.semibold)
-                    .foregroundStyle(Color.skyBlue)
+                    .foregroundStyle(theme.textPrimary)
 
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(items) { playlist in

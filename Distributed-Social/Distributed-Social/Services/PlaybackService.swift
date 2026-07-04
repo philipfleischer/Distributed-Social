@@ -33,6 +33,9 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
     private var originalQueue: [MediaItem] = []
     private var activeQueue: [MediaItem] = []
     private var currentIndex: Int = 0
+    /// Tracks whether `.one` repeat has already replayed the current track,
+    /// so each song plays exactly twice before advancing.
+    private var hasRepeatedCurrentItem = false
 
     override init() {
         super.init()
@@ -56,8 +59,14 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
 
     private func addTimeObserver() {
         let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            self?.currentTime = time.seconds.isNaN ? 0 : time.seconds
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            // Read the live position instead of the callback's time argument:
+            // a queued callback from the previous track could otherwise
+            // overwrite the freshly reset position right after a track change,
+            // leaving the scrubber stuck at the old spot.
+            let seconds = self.player.currentTime().seconds
+            self.currentTime = seconds.isNaN ? 0 : seconds
         }
     }
 
@@ -157,11 +166,23 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
     private func handlePlaybackEnd() {
         switch repeatMode {
         case .one:
-            // Repeat the current song once from the start.
-            player.seek(to: .zero)
-            player.play()
-            player.rate = playbackSpeed
-            updateNowPlayingInfo()
+            // Replay the current song exactly once, then advance.
+            if hasRepeatedCurrentItem {
+                hasRepeatedCurrentItem = false
+                let nextIndex = currentIndex + 1
+                if nextIndex < activeQueue.count {
+                    loadItem(at: nextIndex, autoPlay: true)
+                } else {
+                    isPlaying = false
+                    updateNowPlayingInfo()
+                }
+            } else {
+                hasRepeatedCurrentItem = true
+                player.seek(to: .zero)
+                player.play()
+                player.rate = playbackSpeed
+                updateNowPlayingInfo()
+            }
         case .all:
             // Advance; wrap back to the first item at the end.
             let nextIndex = currentIndex + 1
@@ -272,6 +293,13 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
         let item = activeQueue[index]
         currentIndex = index
         currentItem = item
+        hasRepeatedCurrentItem = false
+
+        // Reset published time state immediately so the scrubber snaps to the
+        // start of the new track instead of holding the previous position
+        // until the next periodic tick.
+        currentTime = position
+        duration = item.duration
 
         let playerItem = AVPlayerItem(url: item.localURL)
         player.replaceCurrentItem(with: playerItem)

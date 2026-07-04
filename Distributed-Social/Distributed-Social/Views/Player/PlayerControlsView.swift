@@ -10,8 +10,14 @@ import SwiftUI
 
 struct PlayerControlsView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
+    @EnvironmentObject var themeStore: ThemeStore
     @State private var isScrubbing = false
     @State private var scrubPosition: TimeInterval = 0
+
+    private var theme: AppTheme { themeStore.theme }
+    /// Inactive toggle buttons use plain grey so the active accent color is
+    /// unmistakable.
+    private var inactive: Color { Color.gray }
 
     var body: some View {
         VStack(spacing: 22) {
@@ -27,13 +33,13 @@ struct PlayerControlsView: View {
                     isScrubbing = editing
                     if !editing { playerVM.seek(to: scrubPosition) }
                 }
-                .tint(.skyBlue)
+                .tint(theme.textPrimary)
                 HStack {
                     Text(playerVM.currentTime.formattedTime)
-                        .font(.subheadline).foregroundStyle(Color.inkSecondary)
+                        .font(.subheadline).foregroundStyle(theme.textSecondary)
                     Spacer()
                     Text(playerVM.duration.formattedTime)
-                        .font(.subheadline).foregroundStyle(Color.inkSecondary)
+                        .font(.subheadline).foregroundStyle(theme.textSecondary)
                 }
             }
 
@@ -42,7 +48,7 @@ struct PlayerControlsView: View {
                 Button { playerVM.toggleShuffle() } label: {
                     Image(systemName: "shuffle")
                         .font(.title3)
-                        .foregroundStyle(playerVM.isShuffleEnabled ? Color.skyBlue : Color.inkSecondary)
+                        .foregroundStyle(playerVM.isShuffleEnabled ? theme.textPrimary : inactive)
                 }
                 Button { playerVM.previousTrack() } label: {
                     Image(systemName: "backward.fill").font(.title)
@@ -50,7 +56,7 @@ struct PlayerControlsView: View {
                 Button { playerVM.togglePlayPause() } label: {
                     Image(systemName: playerVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 72))
-                        .foregroundStyle(Color.skyBlue)
+                        .foregroundStyle(theme.textPrimary)
                 }
                 Button { playerVM.nextTrack() } label: {
                     Image(systemName: "forward.fill").font(.title)
@@ -60,17 +66,17 @@ struct PlayerControlsView: View {
                     ZStack {
                         Image(systemName: playerVM.repeatMode.systemImage)
                             .font(.title3)
-                            .foregroundStyle(playerVM.repeatMode.isActive ? Color.skyBlue : Color.inkSecondary)
+                            .foregroundStyle(playerVM.repeatMode.isActive ? theme.textPrimary : inactive)
                         if playerVM.repeatMode == .one {
                             Circle()
-                                .fill(Color.skyBlue)
+                                .fill(theme.textPrimary)
                                 .frame(width: 5, height: 5)
                                 .offset(y: 14)
                         }
                     }
                 }
             }
-            .foregroundStyle(Color.skyBlue)
+            .foregroundStyle(theme.textPrimary)
 
             // Skip buttons + speed menu row
             HStack(spacing: 44) {
@@ -97,17 +103,23 @@ struct PlayerControlsView: View {
                         .frame(minWidth: 56)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 14)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
-                        .overlay(Capsule().strokeBorder(Color.skyBlue.opacity(0.5), lineWidth: 1))
+                        .background(Capsule().fill(theme.chipFill))
+                        .overlay(Capsule().strokeBorder(theme.textPrimary.opacity(0.5), lineWidth: 1))
                 }
 
                 Button { playerVM.skip(by: Constants.Playback.skipInterval) } label: {
                     Image(systemName: "goforward.15").font(.title2)
                 }
             }
-            .foregroundStyle(Color.skyBlue)
+            .foregroundStyle(theme.textPrimary)
         }
         .padding()
+        .onChange(of: playerVM.currentItem?.id) { _, _ in
+            // New track: drop any in-flight scrub state so the thumb snaps
+            // back to the start immediately.
+            isScrubbing = false
+            scrubPosition = 0
+        }
     }
 
     private func label(for speed: Float) -> String {

@@ -12,6 +12,9 @@ struct VideoRowView<MenuContent: View>: View {
     let onPlay: () -> Void
     @ViewBuilder let menuContent: () -> MenuContent
 
+    @EnvironmentObject var themeStore: ThemeStore
+    private var theme: AppTheme { themeStore.theme }
+
     var body: some View {
         HStack(spacing: 14) {
             MediaArtworkView(item: item, size: 56)
@@ -19,26 +22,26 @@ struct VideoRowView<MenuContent: View>: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayName)
                     .font(.headline)
-                    .foregroundStyle(Color.skyBlue)
+                    .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     if isCurrent {
                         Image(systemName: "waveform")
                             .font(.subheadline)
-                            .foregroundStyle(Color.deepSky)
+                            .foregroundStyle(theme.textPrimary)
                             .symbolEffect(.variableColor.iterative, isActive: isPlaying)
                     }
                     if let artist = item.artist {
                         Text(artist)
                             .font(.subheadline)
-                            .foregroundStyle(Color.inkSecondary)
+                            .foregroundStyle(theme.textSecondary)
                             .lineLimit(1)
                         Text("·")
-                            .foregroundStyle(Color.inkSecondary)
+                            .foregroundStyle(theme.textSecondary)
                     }
                     Text(item.duration.formattedTime)
                         .font(.subheadline)
-                        .foregroundStyle(Color.inkSecondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
 
@@ -47,7 +50,7 @@ struct VideoRowView<MenuContent: View>: View {
             Button { onPlay() } label: {
                 Image(systemName: isCurrent && isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2)
-                    .foregroundStyle(Color.skyBlue)
+                    .foregroundStyle(theme.textPrimary)
             }
             .buttonStyle(.plain)
 
@@ -56,7 +59,7 @@ struct VideoRowView<MenuContent: View>: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.title3)
-                    .foregroundStyle(Color.inkSecondary)
+                    .foregroundStyle(theme.textSecondary)
                     .rotationEffect(.degrees(90))
                     .frame(width: 32, height: 44)
             }

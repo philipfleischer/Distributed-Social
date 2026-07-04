@@ -9,7 +9,10 @@ import SwiftData
 struct PlaylistDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var playerVM: PlayerViewModel
+    @EnvironmentObject var themeStore: ThemeStore
     let playlist: Playlist
+
+    private var theme: AppTheme { themeStore.theme }
 
     private var sortedItems: [PlaylistItem] {
         playlist.sortedItems
@@ -29,27 +32,27 @@ struct PlaylistDetailView: View {
                         let isCurrent = playerVM.currentItem?.id == item.id
                         HStack {
                             Text("\(pi.sortOrder + 1)")
-                                .foregroundStyle(Color.inkSecondary)
+                                .foregroundStyle(theme.textSecondary)
                                 .frame(width: 28)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.displayName)
-                                    .foregroundStyle(isCurrent ? Color.white : Color.skyBlue)
+                                    .foregroundStyle(isCurrent ? theme.textHighlight : theme.textPrimary)
                                     .fontWeight(isCurrent ? .semibold : .regular)
                                 if let artist = item.artist {
                                     Text(artist)
                                         .font(.caption)
-                                        .foregroundStyle(Color.inkSecondary)
+                                        .foregroundStyle(theme.textSecondary)
                                 }
                             }
                             if isCurrent {
                                 Image(systemName: "waveform")
-                                    .foregroundStyle(Color.skyBlue)
+                                    .foregroundStyle(theme.textPrimary)
                                     .symbolEffect(.variableColor.iterative, isActive: playerVM.isPlaying)
                             }
                             Spacer()
                             Text(item.duration.formattedTime)
                                 .font(.caption)
-                                .foregroundStyle(Color.inkSecondary)
+                                .foregroundStyle(theme.textSecondary)
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {

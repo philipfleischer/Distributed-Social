@@ -11,8 +11,11 @@ import SwiftUI
 
 struct FullPlayerView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
+    @EnvironmentObject var themeStore: ThemeStore
     @State private var itemForPlaylist: MediaItem?
     @State private var dragOffset: CGFloat = 0
+
+    private var theme: AppTheme { themeStore.theme }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -34,13 +37,13 @@ struct FullPlayerView: View {
                 Text(playerVM.currentItem?.displayName ?? "")
                     .font(.title)
                     .fontWeight(.semibold)
-                    .foregroundStyle(Color.skyBlue)
+                    .foregroundStyle(theme.textPrimary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                 if let artist = playerVM.currentItem?.artist {
                     Text(artist)
                         .font(.title3)
-                        .foregroundStyle(Color.inkSecondary)
+                        .foregroundStyle(theme.textSecondary)
                 }
             }
             .padding(.horizontal)
@@ -52,8 +55,8 @@ struct FullPlayerView: View {
         .padding(.top, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
-            LinearGradient.summerSky
-                .background(Color.black)
+            theme.background
+                .background(theme.backgroundColors.first ?? .black)
                 .ignoresSafeArea(edges: .top)
         )
         .offset(y: max(0, dragOffset))
@@ -107,7 +110,7 @@ struct FullPlayerView: View {
                     .frame(width: 44, height: 44)
             }
         }
-        .foregroundStyle(Color.skyBlue)
+        .foregroundStyle(theme.textPrimary)
         .padding(.horizontal, 12)
     }
 }
