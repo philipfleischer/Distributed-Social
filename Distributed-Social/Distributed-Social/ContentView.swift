@@ -2,7 +2,8 @@
 //  ContentView.swift
 //  Distributed-Social
 //
-//  Root tab navigation with a mini-player overlay above the tab bar.
+//  Root tab navigation. The full player is an overlay (not a sheet) so the
+//  tab bar stays visible and usable on every screen.
 //
 
 import SwiftUI
@@ -13,10 +14,8 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             TabView {
-                AudioLibraryView()
-                    .tabItem { Label("Audio", systemImage: "music.note.list") }
-                VideoLibraryView()
-                    .tabItem { Label("Video", systemImage: "film") }
+                HomeView()
+                    .tabItem { Label("Home", systemImage: "house.fill") }
                 PlaylistsView()
                     .tabItem { Label("Playlists", systemImage: "list.bullet") }
                 ImportView()
@@ -25,14 +24,18 @@ struct ContentView: View {
                     .tabItem { Label("Settings", systemImage: "gear") }
             }
 
-            if playerVM.currentItem != nil {
+            if playerVM.isFullPlayerPresented {
+                FullPlayerView()
+                    .padding(.bottom, 49) // keep the tab bar visible below
+                    .transition(.move(edge: .bottom))
+                    .zIndex(1)
+            } else if playerVM.currentItem != nil {
                 MiniPlayerView()
-                    .padding(.bottom, 49) // clear the tab bar
+                    .padding(.bottom, 64) // sit clearly above the tab bar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .sheet(isPresented: $playerVM.isFullPlayerPresented) {
-            FullPlayerView()
-        }
+        .animation(.spring(duration: 0.35), value: playerVM.isFullPlayerPresented)
     }
 }
 

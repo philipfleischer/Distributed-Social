@@ -1,0 +1,74 @@
+//
+//  MediaArtworkView.swift
+//  Distributed-Social
+//
+//  A unique, deterministic artwork tile per media item: a gradient of hues
+//  derived from the item's UUID plus a varying decorative shape, so files
+//  are easy to tell apart at a glance.
+//
+
+import SwiftUI
+
+struct MediaArtworkView: View {
+    let item: MediaItem
+    var size: CGFloat = 56
+
+    /// Stable per-item value used to vary the decorative shape.
+    private var seed: Int {
+        var value = 0
+        for scalar in item.id.uuidString.unicodeScalars {
+            value = (value &* 17 &+ Int(scalar.value)) & 0xFFFF
+        }
+        return value
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.21)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.artworkHue(for: item.id),
+                            Color.artworkHue(for: item.id, offset: 0.15)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            decorativeShape
+                .foregroundStyle(.white.opacity(0.30))
+
+            Image(systemName: item.mediaType.systemImage)
+                .font(.system(size: size * 0.40, weight: .semibold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+        }
+        .frame(width: size, height: size)
+    }
+
+    /// One of a few background motifs, chosen deterministically per item.
+    @ViewBuilder
+    private var decorativeShape: some View {
+        switch seed % 4 {
+        case 0:
+            Circle()
+                .frame(width: size * 0.8, height: size * 0.8)
+                .offset(x: size * 0.28, y: -size * 0.28)
+        case 1:
+            RoundedRectangle(cornerRadius: size * 0.1)
+                .frame(width: size * 0.7, height: size * 0.7)
+                .rotationEffect(.degrees(35))
+                .offset(x: -size * 0.3, y: size * 0.3)
+        case 2:
+            Capsule()
+                .frame(width: size * 1.1, height: size * 0.35)
+                .rotationEffect(.degrees(-40))
+        default:
+            Circle()
+                .strokeBorder(lineWidth: size * 0.09)
+                .frame(width: size * 0.85, height: size * 0.85)
+                .offset(x: -size * 0.25, y: -size * 0.3)
+        }
+    }
+}

@@ -14,7 +14,7 @@ struct PlayerControlsView: View {
     @State private var scrubPosition: TimeInterval = 0
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 22) {
             // Progress bar
             VStack(spacing: 4) {
                 Slider(
@@ -27,13 +27,13 @@ struct PlayerControlsView: View {
                     isScrubbing = editing
                     if !editing { playerVM.seek(to: scrubPosition) }
                 }
-                .tint(.skyBlue)
+                .tint(.deepSky)
                 HStack {
                     Text(playerVM.currentTime.formattedTime)
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(.secondary)
                     Spacer()
                     Text(playerVM.duration.formattedTime)
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
 
@@ -41,59 +41,76 @@ struct PlayerControlsView: View {
             HStack(spacing: 32) {
                 Button { playerVM.toggleShuffle() } label: {
                     Image(systemName: "shuffle")
-                        .foregroundStyle(playerVM.isShuffleEnabled ? Color.skyBlue : Color.primary)
+                        .font(.title3)
+                        .foregroundStyle(playerVM.isShuffleEnabled ? Color.deepSky : Color.primary)
                 }
                 Button { playerVM.previousTrack() } label: {
-                    Image(systemName: "backward.fill").font(.title2)
+                    Image(systemName: "backward.fill").font(.title)
                 }
                 Button { playerVM.togglePlayPause() } label: {
                     Image(systemName: playerVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(Color.skyBlue)
+                        .font(.system(size: 72))
+                        .foregroundStyle(Color.deepSky)
                 }
                 Button { playerVM.nextTrack() } label: {
-                    Image(systemName: "forward.fill").font(.title2)
+                    Image(systemName: "forward.fill").font(.title)
                 }
                 // Repeat button — cycles off → all → one → off
                 Button { playerVM.cycleRepeatMode() } label: {
                     ZStack {
                         Image(systemName: playerVM.repeatMode.systemImage)
-                            .foregroundStyle(playerVM.repeatMode.isActive ? Color.skyBlue : Color.primary)
+                            .font(.title3)
+                            .foregroundStyle(playerVM.repeatMode.isActive ? Color.deepSky : Color.primary)
                         if playerVM.repeatMode == .one {
                             Circle()
-                                .fill(Color.skyBlue)
+                                .fill(Color.deepSky)
                                 .frame(width: 5, height: 5)
-                                .offset(y: 12)
+                                .offset(y: 14)
                         }
                     }
                 }
             }
             .foregroundStyle(Color.primary)
 
-            // Skip buttons row
-            HStack(spacing: 48) {
+            // Skip buttons + speed menu row
+            HStack(spacing: 44) {
                 Button { playerVM.skip(by: -Constants.Playback.skipInterval) } label: {
-                    Image(systemName: "gobackward.15").font(.title3)
+                    Image(systemName: "gobackward.15").font(.title2)
                 }
+
+                // Speed: shows current value; tap to pick from a menu.
+                Menu {
+                    ForEach(Constants.Playback.speeds, id: \.self) { speed in
+                        Button {
+                            playerVM.setSpeed(speed)
+                        } label: {
+                            if playerVM.playbackSpeed == speed {
+                                Label(label(for: speed), systemImage: "checkmark")
+                            } else {
+                                Text(label(for: speed))
+                            }
+                        }
+                    }
+                } label: {
+                    Text(label(for: playerVM.playbackSpeed))
+                        .font(.headline)
+                        .frame(minWidth: 56)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 14)
+                        .background(Capsule().fill(Color.white.opacity(0.55)))
+                        .overlay(Capsule().strokeBorder(Color.deepSky.opacity(0.4), lineWidth: 1))
+                }
+
                 Button { playerVM.skip(by: Constants.Playback.skipInterval) } label: {
-                    Image(systemName: "goforward.15").font(.title3)
+                    Image(systemName: "goforward.15").font(.title2)
                 }
             }
             .foregroundStyle(Color.deepSky)
-
-            // Speed picker
-            Picker("Speed", selection: Binding(
-                get: { playerVM.playbackSpeed },
-                set: { playerVM.setSpeed($0) }
-            )) {
-                Text("0.75×").tag(Float(0.75))
-                Text("1×").tag(Float(1.0))
-                Text("1.25×").tag(Float(1.25))
-                Text("1.5×").tag(Float(1.5))
-                Text("2×").tag(Float(2.0))
-            }
-            .pickerStyle(.segmented)
         }
         .padding()
+    }
+
+    private func label(for speed: Float) -> String {
+        String(format: "%g×", speed)
     }
 }

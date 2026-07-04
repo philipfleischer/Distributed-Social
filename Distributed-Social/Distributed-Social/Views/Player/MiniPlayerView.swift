@@ -10,20 +10,16 @@ struct MiniPlayerView: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            Image(systemName: playerVM.currentItem?.mediaType.systemImage ?? "music.note")
-                .font(.title2)
-                .foregroundStyle(Color.deepSky)
-                .frame(width: 44, height: 44)
-                .background(Color.skyBlue.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            if let item = playerVM.currentItem {
+                MediaArtworkView(item: item, size: 48)
+            }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(playerVM.currentItem?.displayName ?? "")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.headline)
                     .lineLimit(1)
                 Text(playerVM.currentTime.formattedTime + " / " + playerVM.duration.formattedTime)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
@@ -31,22 +27,24 @@ struct MiniPlayerView: View {
 
             Button { playerVM.previousTrack() } label: {
                 Image(systemName: "backward.fill")
+                    .font(.title3)
             }
             Button { playerVM.togglePlayPause() } label: {
                 Image(systemName: playerVM.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
+                    .font(.title2)
             }
             Button { playerVM.nextTrack() } label: {
                 Image(systemName: "forward.fill")
+                    .font(.title3)
             }
         }
         .foregroundStyle(Color.deepSky)
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(Color.sakuraPink.opacity(0.35), lineWidth: 1)
         )
         .padding(.horizontal, 8)

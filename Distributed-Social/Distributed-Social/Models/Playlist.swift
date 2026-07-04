@@ -13,6 +13,10 @@ final class Playlist {
     var mediaTypeRaw: String = MediaType.audio.rawValue
     var lastPlayedItemId: UUID?
     var lastPlayedPosition: TimeInterval = 0
+    var lastPlayedDate: Date?
+    var playCount: Int = 0
+    /// Optional custom cover image chosen by the user (stored outside the DB).
+    @Attribute(.externalStorage) var imageData: Data?
     @Relationship(inverse: \PlaylistItem.playlist) var orderedItems: [PlaylistItem]?
 
     var mediaType: MediaType {
