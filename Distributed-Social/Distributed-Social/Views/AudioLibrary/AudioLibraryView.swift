@@ -17,10 +17,9 @@ struct AudioLibraryView: View {
     @State private var itemForPlaylist: MediaItem?
 
     var body: some View {
-        NavigationStack {
-            let items = viewModel.filteredItems(allItems)
+        let items = viewModel.filteredItems(allItems)
 
-            Group {
+        Group {
                 if items.isEmpty {
                     ContentUnavailableView(
                         "No Audio Files",
@@ -47,15 +46,14 @@ struct AudioLibraryView: View {
                             }
                         }
                     }
-                    .scrollContentBackground(.hidden)
-                }
+                .scrollContentBackground(.hidden)
             }
-            .summerBackground()
-            .navigationTitle("Audio")
-            .searchable(text: $viewModel.searchText)
-            .sheet(item: $itemForPlaylist) { item in
-                AddToPlaylistSheet(item: item)
-            }
+        }
+        .summerBackground()
+        .navigationTitle("Audio")
+        .searchable(text: $viewModel.searchText)
+        .sheet(item: $itemForPlaylist) { item in
+            AddToPlaylistSheet(item: item)
         }
     }
 

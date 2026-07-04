@@ -15,6 +15,7 @@ final class MediaItem {
     var duration: TimeInterval = 0
     var dateImported: Date = Date()
     var lastPosition: TimeInterval = 0
+    var isFavorite: Bool = false
     var folder: Folder?
     var playlistItems: [PlaylistItem]?
 

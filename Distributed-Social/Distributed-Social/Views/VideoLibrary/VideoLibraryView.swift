@@ -17,10 +17,9 @@ struct VideoLibraryView: View {
     @State private var itemForPlaylist: MediaItem?
 
     var body: some View {
-        NavigationStack {
-            let items = viewModel.filteredItems(allItems)
+        let items = viewModel.filteredItems(allItems)
 
-            Group {
+        Group {
                 if items.isEmpty {
                     ContentUnavailableView(
                         "No Video Files",
@@ -47,15 +46,14 @@ struct VideoLibraryView: View {
                             }
                         }
                     }
-                    .scrollContentBackground(.hidden)
-                }
+                .scrollContentBackground(.hidden)
             }
-            .summerBackground()
-            .navigationTitle("Video")
-            .searchable(text: $viewModel.searchText)
-            .sheet(item: $itemForPlaylist) { item in
-                AddToPlaylistSheet(item: item)
-            }
+        }
+        .summerBackground()
+        .navigationTitle("Video")
+        .searchable(text: $viewModel.searchText)
+        .sheet(item: $itemForPlaylist) { item in
+            AddToPlaylistSheet(item: item)
         }
     }
 

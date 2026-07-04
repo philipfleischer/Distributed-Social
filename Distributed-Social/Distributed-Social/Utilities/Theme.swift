@@ -30,15 +30,17 @@ extension Color {
 }
 
 extension LinearGradient {
-    /// Full-screen wash: sakura pink at the top melting into sky blue below —
-    /// a clear, summery pink→blue transition.
+    /// Full-screen wash: a whisper of sakura pink at the top drifting into a
+    /// very light summer-day blue below. Kept intentionally pale so dark text
+    /// and secondary labels stay clearly readable on top of it.
     static var summerSky: LinearGradient {
         LinearGradient(
             colors: [
-                Color.sakuraPink.opacity(0.65),
-                Color(red: 1.0, green: 0.882, blue: 0.898),
-                Color(red: 0.784, green: 0.906, blue: 0.965),
-                Color.skyBlue.opacity(0.65)
+                Color(red: 1.0, green: 0.925, blue: 0.937),   // pale sakura
+                Color(red: 1.0, green: 0.968, blue: 0.972),
+                Color.softWhite,
+                Color(red: 0.906, green: 0.957, blue: 0.984),
+                Color(red: 0.835, green: 0.925, blue: 0.969)  // pale summer blue
             ],
             startPoint: .top,
             endPoint: .bottom

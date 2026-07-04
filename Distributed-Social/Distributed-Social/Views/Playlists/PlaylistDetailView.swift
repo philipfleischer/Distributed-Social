@@ -39,7 +39,7 @@ struct PlaylistDetailView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             let queue = sortedItems.compactMap { $0.mediaItem }
-                            playlist.lastPlayedItemId = item.id
+                            registerPlay(of: item)
                             playerVM.play(item: item, in: queue)
                         }
                     }
@@ -71,7 +71,7 @@ struct PlaylistDetailView: View {
                     Button {
                         let items = sortedItems.compactMap { $0.mediaItem }
                         if let first = items.first {
-                            playlist.lastPlayedItemId = first.id
+                            registerPlay(of: first)
                             playerVM.play(item: first, in: items)
                         }
                     } label: {
@@ -80,6 +80,13 @@ struct PlaylistDetailView: View {
                 }
             }
         }
+    }
+
+    /// Records playback stats used by the Home page (recently played / popular).
+    private func registerPlay(of item: MediaItem) {
+        playlist.lastPlayedItemId = item.id
+        playlist.lastPlayedDate = Date()
+        playlist.playCount += 1
     }
 
     private func renumber() {
