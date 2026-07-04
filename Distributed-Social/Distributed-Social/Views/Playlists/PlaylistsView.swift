@@ -13,6 +13,7 @@ import PhotosUI
 struct PlaylistsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
+    @EnvironmentObject var playerVM: PlayerViewModel
     @Query(sort: \Playlist.name) private var playlists: [Playlist]
 
     @State private var showCreateSheet = false
@@ -76,13 +77,17 @@ struct PlaylistsView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(title)
                     .font(.title2).fontWeight(.semibold)
+                    .foregroundStyle(Color.skyBlue)
 
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(items) { playlist in
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
                         } label: {
-                            PlaylistTileView(playlist: playlist)
+                            PlaylistTileView(
+                                playlist: playlist,
+                                isActive: playerVM.currentPlaylistID == playlist.id
+                            )
                         }
                         .buttonStyle(.plain)
                         .contextMenu {

@@ -62,6 +62,7 @@ struct VideoLibraryView: View {
         if playerVM.currentItem?.id == item.id {
             playerVM.togglePlayPause()
         } else {
+            playerVM.currentPlaylistID = nil // playing from the library, not a playlist
             playerVM.play(item: item, in: items)
         }
     }

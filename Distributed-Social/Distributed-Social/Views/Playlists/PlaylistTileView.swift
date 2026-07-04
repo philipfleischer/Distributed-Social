@@ -2,15 +2,17 @@
 //  PlaylistTileView.swift
 //  Distributed-Social
 //
-//  A square playlist cover: the user's chosen image if set, otherwise a
-//  unique gradient + motif derived from the playlist's UUID.
+//  A square playlist cover. Priority: the user's chosen image, then the
+//  first song's embedded album art, and only as a last resort the unique
+//  generated gradient + motif.
 //
 
 import SwiftUI
 
 struct PlaylistTileView: View {
     let playlist: Playlist
-    var size: CGFloat? = nil   // nil → flexible (grid) sizing
+    var size: CGFloat? = nil        // nil → flexible (grid) sizing
+    var isActive: Bool = false      // true when this playlist is playing
 
     private var seed: Int {
         var value = 0
@@ -20,18 +22,36 @@ struct PlaylistTileView: View {
         return value
     }
 
+    /// Custom cover if chosen, otherwise the first available song artwork.
+    private var coverData: Data? {
+        if let data = playlist.imageData { return data }
+        return playlist.sortedItems.compactMap { $0.mediaItem?.artworkData }.first
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             cover
                 .aspectRatio(1, contentMode: .fit)
                 .frame(width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
-                .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .strokeBorder(Color.skyBlue, lineWidth: isActive ? 3 : 0)
+                )
+                .overlay(alignment: .topTrailing) {
+                    if isActive {
+                        Image(systemName: "waveform")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.black)
+                            .padding(6)
+                            .background(Color.skyBlue)
+                            .clipShape(Circle())
+                            .padding(8)
+                    }
+                }
+                .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
 
-            Text(playlist.name)
-                .font(.headline)
-                .foregroundStyle(.black)
-                .lineLimit(1)
+            MarqueeText(text: playlist.name, font: .headline, color: .skyBlue)
             Text("\(playlist.sortedItems.count) item\(playlist.sortedItems.count == 1 ? "" : "s")")
                 .font(.subheadline)
                 .foregroundStyle(Color.inkSecondary)
@@ -40,7 +60,7 @@ struct PlaylistTileView: View {
 
     @ViewBuilder
     private var cover: some View {
-        if let data = playlist.imageData, let uiImage = UIImage(data: data) {
+        if let data = coverData, let uiImage = UIImage(data: data) {
             Color.clear
                 .overlay(
                     Image(uiImage: uiImage)

@@ -27,7 +27,7 @@ struct PlayerControlsView: View {
                     isScrubbing = editing
                     if !editing { playerVM.seek(to: scrubPosition) }
                 }
-                .tint(.deepSky)
+                .tint(.skyBlue)
                 HStack {
                     Text(playerVM.currentTime.formattedTime)
                         .font(.subheadline).foregroundStyle(Color.inkSecondary)
@@ -42,7 +42,7 @@ struct PlayerControlsView: View {
                 Button { playerVM.toggleShuffle() } label: {
                     Image(systemName: "shuffle")
                         .font(.title3)
-                        .foregroundStyle(playerVM.isShuffleEnabled ? Color.deepSky : Color.primary)
+                        .foregroundStyle(playerVM.isShuffleEnabled ? Color.skyBlue : Color.inkSecondary)
                 }
                 Button { playerVM.previousTrack() } label: {
                     Image(systemName: "backward.fill").font(.title)
@@ -50,7 +50,7 @@ struct PlayerControlsView: View {
                 Button { playerVM.togglePlayPause() } label: {
                     Image(systemName: playerVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 72))
-                        .foregroundStyle(Color.deepSky)
+                        .foregroundStyle(Color.skyBlue)
                 }
                 Button { playerVM.nextTrack() } label: {
                     Image(systemName: "forward.fill").font(.title)
@@ -60,17 +60,17 @@ struct PlayerControlsView: View {
                     ZStack {
                         Image(systemName: playerVM.repeatMode.systemImage)
                             .font(.title3)
-                            .foregroundStyle(playerVM.repeatMode.isActive ? Color.deepSky : Color.primary)
+                            .foregroundStyle(playerVM.repeatMode.isActive ? Color.skyBlue : Color.inkSecondary)
                         if playerVM.repeatMode == .one {
                             Circle()
-                                .fill(Color.deepSky)
+                                .fill(Color.skyBlue)
                                 .frame(width: 5, height: 5)
                                 .offset(y: 14)
                         }
                     }
                 }
             }
-            .foregroundStyle(Color.primary)
+            .foregroundStyle(Color.skyBlue)
 
             // Skip buttons + speed menu row
             HStack(spacing: 44) {
@@ -97,15 +97,15 @@ struct PlayerControlsView: View {
                         .frame(minWidth: 56)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 14)
-                        .background(Capsule().fill(Color.white.opacity(0.55)))
-                        .overlay(Capsule().strokeBorder(Color.deepSky.opacity(0.4), lineWidth: 1))
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                        .overlay(Capsule().strokeBorder(Color.skyBlue.opacity(0.5), lineWidth: 1))
                 }
 
                 Button { playerVM.skip(by: Constants.Playback.skipInterval) } label: {
                     Image(systemName: "goforward.15").font(.title2)
                 }
             }
-            .foregroundStyle(Color.deepSky)
+            .foregroundStyle(Color.skyBlue)
         }
         .padding()
     }

@@ -19,7 +19,7 @@ struct AudioRowView<MenuContent: View>: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayName)
                     .font(.headline)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Color.skyBlue)
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     if isCurrent {
@@ -47,7 +47,7 @@ struct AudioRowView<MenuContent: View>: View {
             Button { onPlay() } label: {
                 Image(systemName: isCurrent && isPlaying ? "pause.fill" : "play.fill")
                     .font(.title2)
-                    .foregroundStyle(Color.deepSky)
+                    .foregroundStyle(Color.skyBlue)
             }
             .buttonStyle(.plain)
 

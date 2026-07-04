@@ -18,6 +18,7 @@ struct Distributed_SocialApp: App {
                 .environmentObject(deps.playerViewModel)
                 .environmentObject(deps.mediaLibraryService)
                 .tint(.skyBlue)
+                .preferredColorScheme(.dark) // black theme with light-blue text
         }
         .modelContainer(for: [MediaItem.self, Playlist.self, PlaylistItem.self, Folder.self])
     }
