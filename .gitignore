@@ -1,0 +1,32 @@
+# Xcode
+*.xcuserdata/
+*.xccheckout
+DerivedData/
+build/
+*.pbxuser
+*.perspectivev3
+!default.pbxuser
+!default.perspectivev3
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+*.swp
+
+# Compiled binaries
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Certificates
+*.p12
+*.mobileprovision
+*.cer
+
+# IDE
+.idea/
+*.xcworkspace/xcuserdata/
