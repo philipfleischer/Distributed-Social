@@ -145,7 +145,10 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
                 ? MPNowPlayingInfoMediaType.audio.rawValue
                 : MPNowPlayingInfoMediaType.video.rawValue
         ]
-        info[MPMediaItemPropertyArtist] = "Distributed-Social"
+        info[MPMediaItemPropertyArtist] = item.artist ?? "Distributed-Social"
+        if let data = item.artworkData, let image = UIImage(data: data) {
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 

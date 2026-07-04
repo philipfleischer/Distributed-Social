@@ -16,6 +16,11 @@ final class MediaItem {
     var dateImported: Date = Date()
     var lastPosition: TimeInterval = 0
     var isFavorite: Bool = false
+    /// Artist name from the file's embedded tags (e.g. Spotify/ID3), if any.
+    var artist: String?
+    /// Embedded cover art from the file's tags; rows fall back to the
+    /// generated gradient artwork when this is nil.
+    @Attribute(.externalStorage) var artworkData: Data?
     var folder: Folder?
     var playlistItems: [PlaylistItem]?
 
@@ -33,7 +38,8 @@ final class MediaItem {
     }
 
     init(displayName: String, filename: String, mediaType: MediaType,
-         duration: TimeInterval, dateImported: Date = Date()) {
+         duration: TimeInterval, dateImported: Date = Date(),
+         artist: String? = nil, artworkData: Data? = nil) {
         self.id = UUID()
         self.displayName = displayName
         self.filename = filename
@@ -41,5 +47,7 @@ final class MediaItem {
         self.duration = duration
         self.dateImported = dateImported
         self.lastPosition = 0
+        self.artist = artist
+        self.artworkData = artworkData
     }
 }

@@ -17,10 +17,11 @@ struct MiniPlayerView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(playerVM.currentItem?.displayName ?? "")
                     .font(.headline)
+                    .foregroundStyle(.black)
                     .lineLimit(1)
                 Text(playerVM.currentTime.formattedTime + " / " + playerVM.duration.formattedTime)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSecondary)
             }
 
             Spacer()
