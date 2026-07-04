@@ -30,11 +30,11 @@ struct PlaylistTileView: View {
 
             Text(playlist.name)
                 .font(.headline)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.black)
                 .lineLimit(1)
             Text("\(playlist.sortedItems.count) item\(playlist.sortedItems.count == 1 ? "" : "s")")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkSecondary)
         }
     }
 

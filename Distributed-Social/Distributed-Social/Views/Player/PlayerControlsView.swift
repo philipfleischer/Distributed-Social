@@ -30,10 +30,10 @@ struct PlayerControlsView: View {
                 .tint(.deepSky)
                 HStack {
                     Text(playerVM.currentTime.formattedTime)
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(Color.inkSecondary)
                     Spacer()
                     Text(playerVM.duration.formattedTime)
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(Color.inkSecondary)
                 }
             }
 

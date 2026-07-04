@@ -16,6 +16,9 @@ extension Color {
     static let sakuraPink = Color(red: 1.0, green: 0.718, blue: 0.773)
     /// A softer, near-white background tint.
     static let softWhite = Color(red: 0.980, green: 0.992, blue: 1.0)
+    /// Near-black used for secondary text so it stays readable on the
+    /// light-blue background (regular `.secondary` grey blends too much).
+    static let inkSecondary = Color.black.opacity(0.65)
 
     /// Deterministic pastel hue derived from a UUID, so every media item
     /// gets its own stable artwork color across launches.
@@ -30,17 +33,14 @@ extension Color {
 }
 
 extension LinearGradient {
-    /// Full-screen wash: a whisper of sakura pink at the top drifting into a
-    /// very light summer-day blue below. Kept intentionally pale so dark text
-    /// and secondary labels stay clearly readable on top of it.
+    /// Full-screen wash: a light summer-day blue, slightly deeper toward the
+    /// bottom. Black text sits on top of it everywhere for readability.
     static var summerSky: LinearGradient {
         LinearGradient(
             colors: [
-                Color(red: 1.0, green: 0.925, blue: 0.937),   // pale sakura
-                Color(red: 1.0, green: 0.968, blue: 0.972),
-                Color.softWhite,
-                Color(red: 0.906, green: 0.957, blue: 0.984),
-                Color(red: 0.835, green: 0.925, blue: 0.969)  // pale summer blue
+                Color(red: 0.894, green: 0.949, blue: 0.984),
+                Color(red: 0.827, green: 0.914, blue: 0.965),
+                Color(red: 0.761, green: 0.878, blue: 0.949)
             ],
             startPoint: .top,
             endPoint: .bottom

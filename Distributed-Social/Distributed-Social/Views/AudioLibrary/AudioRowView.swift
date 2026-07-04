@@ -19,7 +19,7 @@ struct AudioRowView<MenuContent: View>: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayName)
                     .font(.headline)
-                    .foregroundStyle(isCurrent ? Color.deepSky : Color.primary)
+                    .foregroundStyle(.black)
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     if isCurrent {
@@ -28,14 +28,17 @@ struct AudioRowView<MenuContent: View>: View {
                             .foregroundStyle(Color.deepSky)
                             .symbolEffect(.variableColor.iterative, isActive: isPlaying)
                     }
+                    if let artist = item.artist {
+                        Text(artist)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.inkSecondary)
+                            .lineLimit(1)
+                        Text("·")
+                            .foregroundStyle(Color.inkSecondary)
+                    }
                     Text(item.duration.formattedTime)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if item.lastPosition > 5 {
-                        Text("· \(item.lastPosition.formattedTime) played")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                        .foregroundStyle(Color.inkSecondary)
                 }
             }
 
@@ -53,7 +56,7 @@ struct AudioRowView<MenuContent: View>: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.title3)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSecondary)
                     .rotationEffect(.degrees(90))
                     .frame(width: 32, height: 44)
             }

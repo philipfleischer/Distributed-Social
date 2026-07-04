@@ -43,7 +43,7 @@ struct HomeView: View {
                     if popular.isEmpty && recentlyPlayed.isEmpty {
                         Text("Play a playlist and it will show up here.")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.inkSecondary)
                             .padding(.horizontal)
                     }
 

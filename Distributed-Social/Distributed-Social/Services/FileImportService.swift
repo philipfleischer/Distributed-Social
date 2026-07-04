@@ -6,6 +6,17 @@
 import Foundation
 import AVFoundation
 
+enum FileImportError: LocalizedError {
+    case noMediaFiles
+
+    var errorDescription: String? {
+        switch self {
+        case .noMediaFiles:
+            return "No media files were found in the selected folder."
+        }
+    }
+}
+
 final class FileImportService: FileImportServiceProtocol {
 
     private var mediaDirectory: URL {
@@ -29,19 +40,77 @@ final class FileImportService: FileImportServiceProtocol {
         let cmDuration = try await asset.load(.duration)
         let duration = cmDuration.seconds.isNaN ? 0 : cmDuration.seconds
 
+        // Prefer the file's embedded tags (title / artist / cover art, as
+        // written by Spotify and most encoders); fall back to the filename.
+        let tags = await loadEmbeddedTags(from: asset)
+
         let mediaType: MediaType = sourceURL.isVideoFile ? .video : .audio
-        let displayName = sourceURL.deletingPathExtension().lastPathComponent
+        let fallbackName = sourceURL.deletingPathExtension().lastPathComponent
 
         return MediaItem(
-            displayName: displayName,
+            displayName: tags.title ?? fallbackName,
             filename: uniqueFilename,
             mediaType: mediaType,
-            duration: duration
+            duration: duration,
+            artist: tags.artist,
+            artworkData: tags.artwork
         )
+    }
+
+    func importFolder(from folderURL: URL,
+                      onProgress: (_ current: Int, _ total: Int) -> Void) async throws -> (name: String, items: [MediaItem]) {
+        let accessed = folderURL.startAccessingSecurityScopedResource()
+        defer { if accessed { folderURL.stopAccessingSecurityScopedResource() } }
+
+        let fileURLs = try FileManager.default
+            .contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil)
+            .filter { $0.isAudioFile || $0.isVideoFile }
+            .sorted {
+                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+            }
+
+        guard !fileURLs.isEmpty else { throw FileImportError.noMediaFiles }
+
+        var items: [MediaItem] = []
+        for (index, fileURL) in fileURLs.enumerated() {
+            onProgress(index + 1, fileURLs.count)
+            // Skip unreadable files rather than aborting the whole batch.
+            if let item = try? await importFile(from: fileURL) {
+                items.append(item)
+            }
+        }
+        return (name: folderURL.lastPathComponent, items: items)
     }
 
     func deleteFile(_ item: MediaItem) throws {
         guard FileManager.default.fileExists(atPath: item.localURL.path) else { return }
         try FileManager.default.removeItem(at: item.localURL)
+    }
+
+    // MARK: - Embedded metadata
+
+    /// Reads common metadata tags (ID3/iTunes-style) from the asset.
+    private func loadEmbeddedTags(from asset: AVURLAsset) async -> (title: String?, artist: String?, artwork: Data?) {
+        guard let metadata = try? await asset.load(.commonMetadata) else {
+            return (nil, nil, nil)
+        }
+
+        let titleItem = AVMetadataItem.metadataItems(
+            from: metadata, filteredByIdentifier: .commonIdentifierTitle).first
+        let artistItem = AVMetadataItem.metadataItems(
+            from: metadata, filteredByIdentifier: .commonIdentifierArtist).first
+        let artworkItem = AVMetadataItem.metadataItems(
+            from: metadata, filteredByIdentifier: .commonIdentifierArtwork).first
+
+        let title = try? await titleItem?.load(.stringValue)
+        let artist = try? await artistItem?.load(.stringValue)
+        let artwork = try? await artworkItem?.load(.dataValue)
+
+        // Treat empty strings as missing so fallbacks kick in.
+        return (
+            title: (title?.isEmpty == false) ? title : nil,
+            artist: (artist?.isEmpty == false) ? artist : nil,
+            artwork: artwork
+        )
     }
 }

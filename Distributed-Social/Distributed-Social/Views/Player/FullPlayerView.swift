@@ -27,12 +27,20 @@ struct FullPlayerView: View {
                     .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
             }
 
-            // Title
-            Text(playerVM.currentItem?.displayName ?? "")
-                .font(.title)
-                .fontWeight(.semibold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+            // Title + artist (from embedded tags, when available)
+            VStack(spacing: 4) {
+                Text(playerVM.currentItem?.displayName ?? "")
+                    .font(.title)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.black)
+                    .multilineTextAlignment(.center)
+                if let artist = playerVM.currentItem?.artist {
+                    Text(artist)
+                        .font(.title3)
+                        .foregroundStyle(Color.inkSecondary)
+                }
+            }
+            .padding(.horizontal)
 
             PlayerControlsView()
 

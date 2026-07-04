@@ -23,6 +23,25 @@ struct MediaArtworkView: View {
     }
 
     var body: some View {
+        Group {
+            if let data = item.artworkData, let uiImage = UIImage(data: data) {
+                // Embedded cover art from the file's tags.
+                Color.clear
+                    .overlay(
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.21))
+            } else {
+                generatedArtwork
+            }
+        }
+        .frame(width: size, height: size)
+    }
+
+    /// Fallback: unique gradient + motif derived from the item's UUID.
+    private var generatedArtwork: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.21)
                 .fill(
@@ -44,7 +63,6 @@ struct MediaArtworkView: View {
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
         }
-        .frame(width: size, height: size)
     }
 
     /// One of a few background motifs, chosen deterministically per item.
