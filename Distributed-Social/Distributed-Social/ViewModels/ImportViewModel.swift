@@ -6,7 +6,7 @@
 import Foundation
 import Combine
 
-enum ImportState {
+enum ImportState: Equatable {
     case idle
     case importing(current: Int, total: Int)
     case success(String)
@@ -42,9 +42,9 @@ final class ImportViewModel: ObservableObject {
                 // Keep going; report the overall result at the end.
             }
         }
-        state = imported > 0
+        flash(imported > 0
             ? .success("Imported \(imported) file\(imported == 1 ? "" : "s")")
-            : .error("None of the selected files could be imported.")
+            : .error("None of the selected files could be imported."))
     }
 
     /// Imports a whole folder and hands the result to the caller, which
@@ -57,9 +57,20 @@ final class ImportViewModel: ObservableObject {
                 self?.state = .importing(current: current, total: total)
             }
             createPlaylist(result.name, result.items)
-            state = .success("Created playlist “\(result.name)” with \(result.items.count) song\(result.items.count == 1 ? "" : "s")")
+            flash(.success("Created playlist “\(result.name)” with \(result.items.count) song\(result.items.count == 1 ? "" : "s")"))
         } catch {
-            state = .error(error.localizedDescription)
+            flash(.error(error.localizedDescription))
+        }
+    }
+
+    /// Shows a result state as a transient toast, then returns to idle.
+    private func flash(_ result: ImportState) {
+        state = result
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            if self?.state == result {
+                self?.state = .idle
+            }
         }
     }
 }

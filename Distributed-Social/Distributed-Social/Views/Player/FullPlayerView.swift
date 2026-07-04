@@ -3,7 +3,8 @@
 //  Distributed-Social
 //
 //  Presented as an overlay above the TabView (not a sheet), so the tab bar
-//  stays visible and usable while the player is open.
+//  stays visible and usable while the player is open. Dismiss via the
+//  chevron or by swiping down.
 //
 
 import SwiftUI
@@ -11,9 +12,10 @@ import SwiftUI
 struct FullPlayerView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
     @State private var itemForPlaylist: MediaItem?
+    @State private var dragOffset: CGFloat = 0
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 16) {
             header
 
             if playerVM.currentItem?.mediaType == .video {
@@ -22,9 +24,9 @@ struct FullPlayerView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal)
             } else if let item = playerVM.currentItem {
-                // Unique per-item artwork, matching the library rows.
-                MediaArtworkView(item: item, size: 240)
-                    .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+                // Large cover art filling the width, pushing controls down.
+                MediaArtworkView(item: item, size: 330)
+                    .shadow(color: .black.opacity(0.5), radius: 14, y: 7)
             }
 
             // Title + artist (from embedded tags, when available)
@@ -32,8 +34,9 @@ struct FullPlayerView: View {
                 Text(playerVM.currentItem?.displayName ?? "")
                     .font(.title)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Color.skyBlue)
                     .multilineTextAlignment(.center)
+                    .lineLimit(2)
                 if let artist = playerVM.currentItem?.artist {
                     Text(artist)
                         .font(.title3)
@@ -50,9 +53,23 @@ struct FullPlayerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient.summerSky
-                .background(Color.softWhite)
+                .background(Color.black)
                 .ignoresSafeArea(edges: .top)
         )
+        .offset(y: max(0, dragOffset))
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    dragOffset = value.translation.height
+                }
+                .onEnded { value in
+                    if value.translation.height > 90 {
+                        playerVM.isFullPlayerPresented = false
+                    }
+                    dragOffset = 0
+                }
+        )
+        .animation(.spring(duration: 0.3), value: dragOffset)
         .sheet(item: $itemForPlaylist) { item in
             AddToPlaylistSheet(item: item)
         }
@@ -90,7 +107,7 @@ struct FullPlayerView: View {
                     .frame(width: 44, height: 44)
             }
         }
-        .foregroundStyle(Color.deepSky)
+        .foregroundStyle(Color.skyBlue)
         .padding(.horizontal, 12)
     }
 }

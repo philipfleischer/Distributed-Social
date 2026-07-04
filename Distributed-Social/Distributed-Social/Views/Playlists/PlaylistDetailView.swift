@@ -26,15 +26,30 @@ struct PlaylistDetailView: View {
             } else {
                 ForEach(sortedItems) { pi in
                     if let item = pi.mediaItem {
+                        let isCurrent = playerVM.currentItem?.id == item.id
                         HStack {
                             Text("\(pi.sortOrder + 1)")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.inkSecondary)
                                 .frame(width: 28)
-                            Text(item.displayName)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.displayName)
+                                    .foregroundStyle(isCurrent ? Color.white : Color.skyBlue)
+                                    .fontWeight(isCurrent ? .semibold : .regular)
+                                if let artist = item.artist {
+                                    Text(artist)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.inkSecondary)
+                                }
+                            }
+                            if isCurrent {
+                                Image(systemName: "waveform")
+                                    .foregroundStyle(Color.skyBlue)
+                                    .symbolEffect(.variableColor.iterative, isActive: playerVM.isPlaying)
+                            }
                             Spacer()
                             Text(item.duration.formattedTime)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.inkSecondary)
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -82,11 +97,13 @@ struct PlaylistDetailView: View {
         }
     }
 
-    /// Records playback stats used by the Home page (recently played / popular).
+    /// Records playback stats used by the Home page (recently played / popular)
+    /// and marks this playlist as the one currently playing.
     private func registerPlay(of item: MediaItem) {
         playlist.lastPlayedItemId = item.id
         playlist.lastPlayedDate = Date()
         playlist.playCount += 1
+        playerVM.currentPlaylistID = playlist.id
     }
 
     private func renumber() {

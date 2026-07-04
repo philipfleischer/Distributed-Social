@@ -18,6 +18,9 @@ final class PlayerViewModel: ObservableObject {
     @Published var isShuffleEnabled: Bool = false
     @Published var repeatMode: RepeatMode = .off
     @Published var isFullPlayerPresented: Bool = false
+    /// The playlist currently being played, if playback started from one —
+    /// used to highlight it in the Playlists grid and Home carousels.
+    @Published var currentPlaylistID: UUID? = nil
 
     private let playbackService: PlaybackService
 

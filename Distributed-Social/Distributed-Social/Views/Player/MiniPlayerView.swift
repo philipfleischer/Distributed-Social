@@ -17,7 +17,7 @@ struct MiniPlayerView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(playerVM.currentItem?.displayName ?? "")
                     .font(.headline)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Color.skyBlue)
                     .lineLimit(1)
                 Text(playerVM.currentTime.formattedTime + " / " + playerVM.duration.formattedTime)
                     .font(.subheadline)
@@ -39,7 +39,7 @@ struct MiniPlayerView: View {
                     .font(.title3)
             }
         }
-        .foregroundStyle(Color.deepSky)
+        .foregroundStyle(Color.skyBlue)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)

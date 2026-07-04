@@ -10,6 +10,7 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
+    @EnvironmentObject var playerVM: PlayerViewModel
     @Query private var playlists: [Playlist]
     @Query private var allItems: [MediaItem]
 
@@ -51,6 +52,7 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Your Library")
                             .font(.title2).fontWeight(.semibold)
+                            .foregroundStyle(Color.skyBlue)
                             .padding(.horizontal)
 
                         HStack(spacing: 16) {
@@ -90,6 +92,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(.title2).fontWeight(.semibold)
+                .foregroundStyle(Color.skyBlue)
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -98,7 +101,11 @@ struct HomeView: View {
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
                         } label: {
-                            PlaylistTileView(playlist: playlist, size: 140)
+                            PlaylistTileView(
+                                playlist: playlist,
+                                size: 140,
+                                isActive: playerVM.currentPlaylistID == playlist.id
+                            )
                         }
                         .buttonStyle(.plain)
                     }
