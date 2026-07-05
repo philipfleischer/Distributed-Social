@@ -21,6 +21,8 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
     @Published private(set) var playbackSpeed: Float = 1.0
     @Published private(set) var isShuffleEnabled: Bool = false
     @Published private(set) var repeatMode: RepeatMode = .off
+    /// The songs coming up after the current one, in play order.
+    @Published private(set) var upNext: [MediaItem] = []
 
     private let player = AVPlayer()
     /// Exposed so `VideoPlayerView` can render the current item.
@@ -126,16 +128,12 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
             self.seek(to: positionEvent.positionTime)
             return .success
         }
-        center.skipForwardCommand.preferredIntervals = [NSNumber(value: Constants.Playback.skipInterval)]
-        center.skipForwardCommand.addTarget { [weak self] _ in
-            self?.skip(by: Constants.Playback.skipInterval)
-            return .success
-        }
-        center.skipBackwardCommand.preferredIntervals = [NSNumber(value: Constants.Playback.skipInterval)]
-        center.skipBackwardCommand.addTarget { [weak self] _ in
-            self?.skip(by: -Constants.Playback.skipInterval)
-            return .success
-        }
+        // Skip commands stay disabled: when enabled, the lock screen shows
+        // ±15s buttons INSTEAD of next/previous track buttons.
+        center.skipForwardCommand.isEnabled = false
+        center.skipBackwardCommand.isEnabled = false
+        center.nextTrackCommand.isEnabled = true
+        center.previousTrackCommand.isEnabled = true
     }
 
     /// Publishes the current track metadata and position to the system so the
@@ -178,10 +176,15 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
                 }
             } else {
                 hasRepeatedCurrentItem = true
-                player.seek(to: .zero)
-                player.play()
-                player.rate = playbackSpeed
-                updateNowPlayingInfo()
+                // The player is parked at the end; play() must wait for the
+                // seek to finish or it immediately re-fires the end event
+                // (which made repeat look like it "did not work").
+                player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                    guard let self else { return }
+                    self.player.play()
+                    self.player.rate = self.playbackSpeed
+                    self.updateNowPlayingInfo()
+                }
             }
         case .all:
             // Advance; wrap back to the first item at the end.
@@ -276,10 +279,70 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
            let newIndex = activeQueue.firstIndex(where: { $0.id == id }) {
             currentIndex = newIndex
         }
+        refreshUpNext()
     }
 
     func cycleRepeatMode() {
         repeatMode = repeatMode.next()
+    }
+
+    // MARK: - Queue management
+
+    /// Inserts a song directly after the current one.
+    func playNext(_ item: MediaItem) {
+        guard currentItem != nil else {
+            play(item: item, in: [item], startAt: 0)
+            return
+        }
+        activeQueue.insert(item, at: min(currentIndex + 1, activeQueue.count))
+        originalQueue.append(item)
+        refreshUpNext()
+    }
+
+    /// Appends a song to the end of the queue.
+    func addToQueue(_ item: MediaItem) {
+        guard currentItem != nil else {
+            play(item: item, in: [item], startAt: 0)
+            return
+        }
+        activeQueue.append(item)
+        originalQueue.append(item)
+        refreshUpNext()
+    }
+
+    /// Jumps playback to a song already in the queue.
+    func jump(to item: MediaItem) {
+        guard let index = activeQueue.firstIndex(where: { $0.id == item.id }) else { return }
+        loadItem(at: index, autoPlay: true)
+    }
+
+    func removeFromUpNext(at offsets: IndexSet) {
+        for offset in offsets.sorted(by: >) {
+            let queueIndex = currentIndex + 1 + offset
+            guard queueIndex < activeQueue.count else { continue }
+            activeQueue.remove(at: queueIndex)
+        }
+        refreshUpNext()
+    }
+
+    func moveUpNext(fromOffsets: IndexSet, toOffset: Int) {
+        // Manual reorder (the move(fromOffsets:toOffset:) helper is SwiftUI-only,
+        // which this service intentionally does not import).
+        var items = upNext
+        let moving = fromOffsets.sorted().map { items[$0] }
+        let adjustedTarget = toOffset - fromOffsets.count(where: { $0 < toOffset })
+        for index in fromOffsets.sorted(by: >) { items.remove(at: index) }
+        items.insert(contentsOf: moving, at: min(adjustedTarget, items.count))
+        activeQueue.replaceSubrange((currentIndex + 1)..., with: items)
+        refreshUpNext()
+    }
+
+    private func refreshUpNext() {
+        if currentIndex + 1 < activeQueue.count {
+            upNext = Array(activeQueue[(currentIndex + 1)...])
+        } else {
+            upNext = []
+        }
     }
 
     func saveCurrentPosition() {
@@ -324,6 +387,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
             player.rate = playbackSpeed
             isPlaying = true
         }
+        refreshUpNext()
         updateNowPlayingInfo()
     }
 

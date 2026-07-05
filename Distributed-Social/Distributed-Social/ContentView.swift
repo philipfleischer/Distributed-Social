@@ -29,7 +29,6 @@ struct ContentView: View {
 
             if playerVM.isFullPlayerPresented {
                 FullPlayerView()
-                    .padding(.bottom, 49) // keep the tab bar visible below
                     .transition(.move(edge: .bottom))
                     .zIndex(1)
             } else if playerVM.currentItem != nil {
