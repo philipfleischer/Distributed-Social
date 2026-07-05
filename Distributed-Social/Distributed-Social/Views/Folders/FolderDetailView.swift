@@ -42,6 +42,7 @@ struct FolderDetailView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
         .summerBackground()
         .navigationTitle(folder.name)
     }

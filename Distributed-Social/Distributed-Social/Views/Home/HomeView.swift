@@ -36,6 +36,30 @@ struct HomeView: View {
     private var audioCount: Int { allItems.filter { $0.mediaType == .audio }.count }
     private var videoCount: Int { allItems.filter { $0.mediaType == .video }.count }
 
+    /// Fixed per app launch, so the favorites picks reshuffle on each run.
+    private static let sessionSeed = Int.random(in: 1...0x7FFFFFFF)
+
+    /// Songs hearted via the player's favorite button.
+    private var favorites: [MediaItem] {
+        allItems.filter { $0.isFavorite }
+    }
+
+    /// Six favorites chosen pseudo-randomly, stable within a launch but
+    /// different on the next one — surfaces fresh favorites every run.
+    private var favoritesPreview: [MediaItem] {
+        favorites
+            .sorted { sessionRank(of: $0.id) < sessionRank(of: $1.id) }
+            .prefix(6).map { $0 }
+    }
+
+    private func sessionRank(of id: UUID) -> Int {
+        var hash = HomeView.sessionSeed
+        for scalar in id.uuidString.unicodeScalars {
+            hash = (hash &* 31 &+ Int(scalar.value)) & 0x7FFFFFFF
+        }
+        return hash
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -66,6 +90,11 @@ struct HomeView: View {
                     .font(.subheadline)
                     .foregroundStyle(theme.textSecondary)
                     .padding(.horizontal)
+            }
+
+            // Favorites — between Recently Played and Your Library
+            if !favorites.isEmpty {
+                favoritesRow
             }
 
             // Library boxes
@@ -168,6 +197,62 @@ struct HomeView: View {
     }
 
     // MARK: - Pieces
+
+    /// Horizontal carousel of six per-launch random favorites, ending in a
+    /// "Show More" tile that opens the full favorites list.
+    private var favoritesRow: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Favorites")
+                .font(.title2).fontWeight(.semibold)
+                .foregroundStyle(theme.textPrimary)
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(favoritesPreview) { item in
+                        Button {
+                            playerVM.currentPlaylistID = nil
+                            playerVM.play(item: item, in: favoritesPreview)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                MediaArtworkView(item: item, size: 110)
+                                Text(item.displayName)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(theme.textPrimary)
+                                    .lineLimit(1)
+                                    .frame(width: 110, alignment: .leading)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Show More → full favorites list
+                    NavigationLink {
+                        FavoritesView()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 110 * 0.21)
+                                    .fill(theme.chipFill)
+                                    .frame(width: 110, height: 110)
+                                VStack(spacing: 8) {
+                                    Image(systemName: "chevron.right.circle.fill")
+                                        .font(.title)
+                                    Text("Show More")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .foregroundStyle(theme.textPrimary)
+                            }
+                            Text(" ") // baseline-aligns with the song tiles
+                                .font(.subheadline)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
 
     private func playlistRow(title: String, playlists: [Playlist]) -> some View {
         VStack(alignment: .leading, spacing: 12) {

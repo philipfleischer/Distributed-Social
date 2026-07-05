@@ -78,33 +78,19 @@ struct PlayerControlsView: View {
             }
             .foregroundStyle(theme.textPrimary)
 
-            // Skip buttons + speed menu row
+            // Skip buttons + favorite row (speed moved to the player header)
             HStack(spacing: 44) {
                 Button { playerVM.skip(by: -Constants.Playback.skipInterval) } label: {
                     Image(systemName: "gobackward.15").font(.title2)
                 }
 
-                // Speed: shows current value; tap to pick from a menu.
-                Menu {
-                    ForEach(Constants.Playback.speeds, id: \.self) { speed in
-                        Button {
-                            playerVM.setSpeed(speed)
-                        } label: {
-                            if playerVM.playbackSpeed == speed {
-                                Label(label(for: speed), systemImage: "checkmark")
-                            } else {
-                                Text(label(for: speed))
-                            }
-                        }
-                    }
+                Button {
+                    playerVM.currentItem?.isFavorite.toggle()
                 } label: {
-                    Text(label(for: playerVM.playbackSpeed))
-                        .font(.headline)
+                    Image(systemName: (playerVM.currentItem?.isFavorite ?? false) ? "heart.fill" : "heart")
+                        .font(.title2)
+                        .foregroundStyle((playerVM.currentItem?.isFavorite ?? false) ? Color.red : theme.textPrimary)
                         .frame(minWidth: 56)
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 14)
-                        .background(Capsule().fill(theme.chipFill))
-                        .overlay(Capsule().strokeBorder(theme.textPrimary.opacity(0.5), lineWidth: 1))
                 }
 
                 Button { playerVM.skip(by: Constants.Playback.skipInterval) } label: {
@@ -120,9 +106,5 @@ struct PlayerControlsView: View {
             isScrubbing = false
             scrubPosition = 0
         }
-    }
-
-    private func label(for speed: Float) -> String {
-        String(format: "%g×", speed)
     }
 }

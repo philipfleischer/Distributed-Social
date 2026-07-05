@@ -65,6 +65,14 @@ struct PlaylistDetailView: View {
                             registerPlay(of: item)
                             playerVM.play(item: item, in: queue)
                         }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                playerVM.addToQueue(item)
+                            } label: {
+                                Label("Queue", systemImage: "text.append")
+                            }
+                            .tint(.green)
+                        }
                     }
                 }
                 .onDelete { offsets in
@@ -83,6 +91,7 @@ struct PlaylistDetailView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
         .summerBackground()
         .navigationTitle(playlist.name)
         .toolbar {

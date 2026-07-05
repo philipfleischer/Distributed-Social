@@ -2,22 +2,56 @@
 //  MiniPlayerView.swift
 //  Distributed-Social
 //
+//  Collapsed playback island. Swipe left/right to change songs — the
+//  neighboring song's info slides in with the drag, carousel-style.
+//
 
 import SwiftUI
 
 struct MiniPlayerView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
     @EnvironmentObject var themeStore: ThemeStore
+    @State private var swipeOffset: CGFloat = 0
+
     private var theme: AppTheme { themeStore.theme }
 
     var body: some View {
-        HStack(spacing: 16) {
-            if let item = playerVM.currentItem {
-                MediaArtworkView(item: item, size: 48)
+        GeometryReader { geo in
+            let width = geo.size.width
+            ZStack {
+                if let previous = playerVM.previousItem {
+                    row(for: previous)
+                        .offset(x: swipeOffset - width)
+                }
+                if let current = playerVM.currentItem {
+                    row(for: current)
+                        .offset(x: swipeOffset)
+                }
+                if let next = playerVM.nextItem {
+                    row(for: next)
+                        .offset(x: swipeOffset + width)
+                }
             }
+            .gesture(swipeGesture(width: width))
+        }
+        .frame(height: 68)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(theme.textPrimary.opacity(0.35), lineWidth: 1)
+        )
+        .padding(.horizontal, 8)
+        .shadow(color: theme.textPrimary.opacity(0.25), radius: 6, y: 2)
+        .onTapGesture { playerVM.isFullPlayerPresented = true }
+    }
+
+    private func row(for item: MediaItem) -> some View {
+        HStack(spacing: 14) {
+            MediaArtworkView(item: item, size: 48)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(playerVM.currentItem?.displayName ?? "")
+                Text(item.displayName)
                     .font(.headline)
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
@@ -43,15 +77,42 @@ struct MiniPlayerView: View {
         }
         .foregroundStyle(theme.textPrimary)
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(theme.textPrimary.opacity(0.35), lineWidth: 1)
-        )
-        .padding(.horizontal, 8)
-        .shadow(color: theme.textPrimary.opacity(0.25), radius: 6, y: 2)
-        .onTapGesture { playerVM.isFullPlayerPresented = true }
+        .frame(height: 68)
+        .contentShape(Rectangle())
+    }
+
+    /// Horizontal drag: slide neighbors in with the finger; commit past the
+    /// threshold with a smooth roll-off, then swap tracks invisibly.
+    private func swipeGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                var offset = value.translation.width
+                // Rubber-band when there is no song in that direction.
+                if offset < 0 && playerVM.nextItem == nil { offset /= 3 }
+                if offset > 0 && playerVM.previousItem == nil { offset /= 3 }
+                swipeOffset = offset
+            }
+            .onEnded { value in
+                let horizontal = value.translation.width
+                if horizontal < -50, playerVM.nextItem != nil {
+                    commitSwipe(to: -width) { playerVM.nextTrack() }
+                } else if horizontal > 50, playerVM.previousItem != nil {
+                    commitSwipe(to: width) { playerVM.swipeToPreviousTrack() }
+                } else {
+                    withAnimation(.spring(duration: 0.25)) { swipeOffset = 0 }
+                }
+            }
+    }
+
+    private func commitSwipe(to target: CGFloat, change: @escaping () -> Void) {
+        withAnimation(.spring(duration: 0.28), completionCriteria: .logicallyComplete) {
+            swipeOffset = target
+        } completion: {
+            change()
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { swipeOffset = 0 }
+        }
     }
 }
