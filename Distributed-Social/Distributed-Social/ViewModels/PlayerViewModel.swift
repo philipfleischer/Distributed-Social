@@ -21,6 +21,8 @@ final class PlayerViewModel: ObservableObject {
     /// The playlist currently being played, if playback started from one —
     /// used to highlight it in the Playlists grid and Home carousels.
     @Published var currentPlaylistID: UUID? = nil
+    /// Songs coming up after the current one (queue view).
+    @Published var upNext: [MediaItem] = []
 
     private let playbackService: PlaybackService
 
@@ -40,6 +42,7 @@ final class PlayerViewModel: ObservableObject {
         playbackService.$playbackSpeed.assign(to: &$playbackSpeed)
         playbackService.$isShuffleEnabled.assign(to: &$isShuffleEnabled)
         playbackService.$repeatMode.assign(to: &$repeatMode)
+        playbackService.$upNext.assign(to: &$upNext)
     }
 
     func togglePlayPause() { playbackService.togglePlayPause() }
@@ -50,6 +53,13 @@ final class PlayerViewModel: ObservableObject {
     func setSpeed(_ s: Float) { playbackService.setSpeed(s) }
     func toggleShuffle() { playbackService.toggleShuffle() }
     func cycleRepeatMode() { playbackService.cycleRepeatMode() }
+    func playNext(_ item: MediaItem) { playbackService.playNext(item) }
+    func addToQueue(_ item: MediaItem) { playbackService.addToQueue(item) }
+    func jump(to item: MediaItem) { playbackService.jump(to: item) }
+    func removeFromUpNext(at offsets: IndexSet) { playbackService.removeFromUpNext(at: offsets) }
+    func moveUpNext(fromOffsets: IndexSet, toOffset: Int) {
+        playbackService.moveUpNext(fromOffsets: fromOffsets, toOffset: toOffset)
+    }
 
     func play(item: MediaItem, in queue: [MediaItem]) {
         playbackService.play(item: item, in: queue, startAt: item.lastPosition)

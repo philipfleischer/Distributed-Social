@@ -30,18 +30,24 @@ struct PlaylistDetailView: View {
                 ForEach(sortedItems) { pi in
                     if let item = pi.mediaItem {
                         let isCurrent = playerVM.currentItem?.id == item.id
-                        HStack {
+                        HStack(spacing: 10) {
                             Text("\(pi.sortOrder + 1)")
                                 .foregroundStyle(theme.textSecondary)
-                                .frame(width: 28)
+                                .frame(width: 24)
+                            // Album/song cover between the number and title.
+                            MediaArtworkView(item: item, size: 44)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.displayName)
-                                    .foregroundStyle(isCurrent ? theme.textHighlight : theme.textPrimary)
-                                    .fontWeight(isCurrent ? .semibold : .regular)
+                                // Long titles slide instead of wrapping.
+                                MarqueeText(
+                                    text: item.displayName,
+                                    font: .body.weight(isCurrent ? .semibold : .regular),
+                                    color: isCurrent ? theme.textHighlight : theme.textPrimary
+                                )
                                 if let artist = item.artist {
                                     Text(artist)
                                         .font(.caption)
                                         .foregroundStyle(theme.textSecondary)
+                                        .lineLimit(1)
                                 }
                             }
                             if isCurrent {
@@ -49,7 +55,6 @@ struct PlaylistDetailView: View {
                                     .foregroundStyle(theme.textPrimary)
                                     .symbolEffect(.variableColor.iterative, isActive: playerVM.isPlaying)
                             }
-                            Spacer()
                             Text(item.duration.formattedTime)
                                 .font(.caption)
                                 .foregroundStyle(theme.textSecondary)

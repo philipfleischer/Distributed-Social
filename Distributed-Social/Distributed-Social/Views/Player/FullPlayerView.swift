@@ -2,9 +2,8 @@
 //  FullPlayerView.swift
 //  Distributed-Social
 //
-//  Presented as an overlay above the TabView (not a sheet), so the tab bar
-//  stays visible and usable while the player is open. Dismiss via the
-//  chevron or by swiping down.
+//  Full-screen overlay above the TabView (covers the tab bar). Dismiss via
+//  the chevron or by swiping down; swipe horizontally to switch songs.
 //
 
 import SwiftUI
@@ -13,6 +12,7 @@ struct FullPlayerView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
     @EnvironmentObject var themeStore: ThemeStore
     @State private var itemForPlaylist: MediaItem?
+    @State private var showQueue = false
     @State private var dragOffset: CGFloat = 0
 
     private var theme: AppTheme { themeStore.theme }
@@ -57,16 +57,29 @@ struct FullPlayerView: View {
         .background(
             theme.background
                 .background(theme.backgroundColors.first ?? .black)
-                .ignoresSafeArea(edges: .top)
+                .ignoresSafeArea()
         )
         .offset(y: max(0, dragOffset))
         .gesture(
             DragGesture()
                 .onChanged { value in
-                    dragOffset = value.translation.height
+                    // Only vertical pulls move the sheet; horizontal swipes
+                    // are reserved for track switching.
+                    if abs(value.translation.height) > abs(value.translation.width) {
+                        dragOffset = value.translation.height
+                    }
                 }
                 .onEnded { value in
-                    if value.translation.height > 90 {
+                    let horizontal = value.translation.width
+                    let vertical = value.translation.height
+                    if abs(horizontal) > abs(vertical) {
+                        // Horizontal swipe: left → next song, right → previous.
+                        if horizontal < -60 {
+                            playerVM.nextTrack()
+                        } else if horizontal > 60 {
+                            playerVM.previousTrack()
+                        }
+                    } else if vertical > 90 {
                         playerVM.isFullPlayerPresented = false
                     }
                     dragOffset = 0
@@ -75,6 +88,9 @@ struct FullPlayerView: View {
         .animation(.spring(duration: 0.3), value: dragOffset)
         .sheet(item: $itemForPlaylist) { item in
             AddToPlaylistSheet(item: item)
+        }
+        .sheet(isPresented: $showQueue) {
+            QueueSheet()
         }
     }
 
@@ -90,6 +106,14 @@ struct FullPlayerView: View {
             }
 
             Spacer()
+
+            Button {
+                showQueue = true
+            } label: {
+                Image(systemName: "list.number")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 44, height: 44)
+            }
 
             Menu {
                 if let item = playerVM.currentItem {

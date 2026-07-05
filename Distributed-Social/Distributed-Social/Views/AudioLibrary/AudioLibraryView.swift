@@ -77,6 +77,8 @@ struct AudioLibraryView: View {
         MediaItemContextMenu(
             item: item,
             folders: folders,
+            onPlayNext: { playerVM.playNext(item) },
+            onAddToQueue: { playerVM.addToQueue(item) },
             onAddToPlaylist: { itemForPlaylist = item },
             onMoveToFolder: { folder in item.folder = folder },
             onDelete: { delete(item) }
@@ -89,11 +91,20 @@ struct AudioLibraryView: View {
 struct MediaItemContextMenu: View {
     let item: MediaItem
     let folders: [Folder]
+    let onPlayNext: () -> Void
+    let onAddToQueue: () -> Void
     let onAddToPlaylist: () -> Void
     let onMoveToFolder: (Folder?) -> Void
     let onDelete: () -> Void
 
     var body: some View {
+        Button { onPlayNext() } label: {
+            Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+        }
+        Button { onAddToQueue() } label: {
+            Label("Add to Queue", systemImage: "text.append")
+        }
+        Divider()
         Button { onAddToPlaylist() } label: {
             Label("Add to Playlist", systemImage: "text.badge.plus")
         }

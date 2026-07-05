@@ -77,6 +77,8 @@ struct VideoLibraryView: View {
         MediaItemContextMenu(
             item: item,
             folders: folders,
+            onPlayNext: { playerVM.playNext(item) },
+            onAddToQueue: { playerVM.addToQueue(item) },
             onAddToPlaylist: { itemForPlaylist = item },
             onMoveToFolder: { folder in item.folder = folder },
             onDelete: { delete(item) }
