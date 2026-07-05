@@ -21,8 +21,18 @@ final class PlayerViewModel: ObservableObject {
     /// The playlist currently being played, if playback started from one —
     /// used to highlight it in the Playlists grid and Home carousels.
     @Published var currentPlaylistID: UUID? = nil
-    /// Songs coming up after the current one (queue view).
+    /// Manually queued songs (FIFO) — play before the context resumes.
+    @Published var queuedItems: [MediaItem] = []
+    /// Songs that come next naturally from the current context.
     @Published var upNext: [MediaItem] = []
+    /// Transient confirmation message (e.g. "added to queue").
+    @Published var toast: String? = nil
+
+    private var toastTask: Task<Void, Never>?
+
+    /// What a next / previous swipe would play — drives the slide-in previews.
+    var nextItem: MediaItem? { playbackService.peekNext }
+    var previousItem: MediaItem? { playbackService.peekPrevious }
 
     private let playbackService: PlaybackService
 
@@ -43,6 +53,7 @@ final class PlayerViewModel: ObservableObject {
         playbackService.$isShuffleEnabled.assign(to: &$isShuffleEnabled)
         playbackService.$repeatMode.assign(to: &$repeatMode)
         playbackService.$upNext.assign(to: &$upNext)
+        playbackService.$queuedItems.assign(to: &$queuedItems)
     }
 
     func togglePlayPause() { playbackService.togglePlayPause() }
@@ -53,12 +64,33 @@ final class PlayerViewModel: ObservableObject {
     func setSpeed(_ s: Float) { playbackService.setSpeed(s) }
     func toggleShuffle() { playbackService.toggleShuffle() }
     func cycleRepeatMode() { playbackService.cycleRepeatMode() }
-    func playNext(_ item: MediaItem) { playbackService.playNext(item) }
-    func addToQueue(_ item: MediaItem) { playbackService.addToQueue(item) }
+    func playNext(_ item: MediaItem) {
+        playbackService.playNext(item)
+        showToast("“\(item.displayName)” will play next")
+    }
+    func addToQueue(_ item: MediaItem) {
+        playbackService.addToQueue(item)
+        showToast("“\(item.displayName)” added to queue")
+    }
+    /// Swipe variant of previous: always goes to the previous song.
+    func swipeToPreviousTrack() { playbackService.forcePreviousTrack() }
+
+    private func showToast(_ message: String) {
+        toast = message
+        toastTask?.cancel()
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            if !Task.isCancelled { self?.toast = nil }
+        }
+    }
     func jump(to item: MediaItem) { playbackService.jump(to: item) }
     func removeFromUpNext(at offsets: IndexSet) { playbackService.removeFromUpNext(at: offsets) }
     func moveUpNext(fromOffsets: IndexSet, toOffset: Int) {
         playbackService.moveUpNext(fromOffsets: fromOffsets, toOffset: toOffset)
+    }
+    func removeFromQueued(at offsets: IndexSet) { playbackService.removeFromQueued(at: offsets) }
+    func moveQueued(fromOffsets: IndexSet, toOffset: Int) {
+        playbackService.moveQueued(fromOffsets: fromOffsets, toOffset: toOffset)
     }
 
     func play(item: MediaItem, in queue: [MediaItem]) {

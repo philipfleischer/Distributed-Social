@@ -2,8 +2,10 @@
 //  QueueSheet.swift
 //  Distributed-Social
 //
-//  Shows the songs coming up after the current one. Rows can be tapped to
-//  jump, dragged to reorder, and swiped to remove.
+//  Spotify-style two-part queue: "In Queue" holds manually queued songs
+//  (FIFO, always play first); "Next Up" is the natural continuation of the
+//  current context. Rows can be tapped to jump, dragged to reorder, and
+//  swiped to remove — within their own section.
 //
 
 import SwiftUI
@@ -18,7 +20,7 @@ struct QueueSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if playerVM.upNext.isEmpty {
+                if playerVM.queuedItems.isEmpty && playerVM.upNext.isEmpty {
                     ContentUnavailableView(
                         "Queue Is Empty",
                         systemImage: "list.number",
@@ -26,35 +28,23 @@ struct QueueSheet: View {
                     )
                 } else {
                     List {
-                        Section("Up Next") {
-                            ForEach(playerVM.upNext) { item in
-                                HStack(spacing: 12) {
-                                    MediaArtworkView(item: item, size: 44)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.displayName)
-                                            .font(.subheadline.weight(.medium))
-                                            .foregroundStyle(theme.textPrimary)
-                                            .lineLimit(1)
-                                        if let artist = item.artist {
-                                            Text(artist)
-                                                .font(.caption)
-                                                .foregroundStyle(theme.textSecondary)
-                                                .lineLimit(1)
-                                        }
-                                    }
-                                    Spacer()
-                                    Text(item.duration.formattedTime)
-                                        .font(.caption)
-                                        .foregroundStyle(theme.textSecondary)
+                        if !playerVM.queuedItems.isEmpty {
+                            Section("In Queue") {
+                                ForEach(playerVM.queuedItems) { item in
+                                    queueRow(for: item)
                                 }
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    playerVM.jump(to: item)
-                                }
-                                .listRowBackground(Color.clear)
+                                .onDelete { playerVM.removeFromQueued(at: $0) }
+                                .onMove { playerVM.moveQueued(fromOffsets: $0, toOffset: $1) }
                             }
-                            .onDelete { playerVM.removeFromUpNext(at: $0) }
-                            .onMove { playerVM.moveUpNext(fromOffsets: $0, toOffset: $1) }
+                        }
+                        if !playerVM.upNext.isEmpty {
+                            Section("Next Up") {
+                                ForEach(playerVM.upNext) { item in
+                                    queueRow(for: item)
+                                }
+                                .onDelete { playerVM.removeFromUpNext(at: $0) }
+                                .onMove { playerVM.moveUpNext(fromOffsets: $0, toOffset: $1) }
+                            }
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -65,7 +55,9 @@ struct QueueSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    if !playerVM.upNext.isEmpty { EditButton() }
+                    if !(playerVM.queuedItems.isEmpty && playerVM.upNext.isEmpty) {
+                        EditButton()
+                    }
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
@@ -73,5 +65,32 @@ struct QueueSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private func queueRow(for item: MediaItem) -> some View {
+        HStack(spacing: 12) {
+            MediaArtworkView(item: item, size: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.displayName)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(theme.textPrimary)
+                    .lineLimit(1)
+                if let artist = item.artist {
+                    Text(artist)
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+            Text(item.duration.formattedTime)
+                .font(.caption)
+                .foregroundStyle(theme.textSecondary)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            playerVM.jump(to: item)
+        }
+        .listRowBackground(Color.clear)
     }
 }

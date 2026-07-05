@@ -81,6 +81,7 @@ struct SettingsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
             .summerBackground()
             .navigationTitle("Settings")
             .overlay(alignment: .top) { toast }

@@ -38,6 +38,14 @@ struct VideoLibraryView: View {
                         }
                         .listRowBackground(Color.clear)
                         .contextMenu { menu(for: item) }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                playerVM.addToQueue(item)
+                            } label: {
+                                Label("Queue", systemImage: "text.append")
+                            }
+                            .tint(.green)
+                        }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 delete(item)
@@ -47,6 +55,7 @@ struct VideoLibraryView: View {
                         }
                     }
                 .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
             }
         }
         .summerBackground()

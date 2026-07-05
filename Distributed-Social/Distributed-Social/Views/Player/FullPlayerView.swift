@@ -3,7 +3,8 @@
 //  Distributed-Social
 //
 //  Full-screen overlay above the TabView (covers the tab bar). Dismiss via
-//  the chevron or by swiping down; swipe horizontally to switch songs.
+//  the chevron or by swiping down. Swiping horizontally slides the whole
+//  song card (cover, title, artist) carousel-style into the neighbor song.
 //
 
 import SwiftUI
@@ -14,6 +15,7 @@ struct FullPlayerView: View {
     @State private var itemForPlaylist: MediaItem?
     @State private var showQueue = false
     @State private var dragOffset: CGFloat = 0
+    @State private var swipeOffset: CGFloat = 0
 
     private var theme: AppTheme { themeStore.theme }
 
@@ -26,27 +28,30 @@ struct FullPlayerView: View {
                     .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal)
-            } else if let item = playerVM.currentItem {
-                // Large cover art filling the width, pushing controls down.
-                MediaArtworkView(item: item, size: 330)
-                    .shadow(color: .black.opacity(0.5), radius: 14, y: 7)
-            }
-
-            // Title + artist (from embedded tags, when available)
-            VStack(spacing: 4) {
-                Text(playerVM.currentItem?.displayName ?? "")
-                    .font(.title)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(theme.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                if let artist = playerVM.currentItem?.artist {
-                    Text(artist)
-                        .font(.title3)
-                        .foregroundStyle(theme.textSecondary)
+                titleBlock(for: playerVM.currentItem)
+            } else {
+                // Carousel: previous/current/next cards slide with the drag.
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    ZStack {
+                        if let previous = playerVM.previousItem {
+                            songCard(for: previous)
+                                .offset(x: swipeOffset - width)
+                        }
+                        if let current = playerVM.currentItem {
+                            songCard(for: current)
+                                .offset(x: swipeOffset)
+                        }
+                        if let next = playerVM.nextItem {
+                            songCard(for: next)
+                                .offset(x: swipeOffset + width)
+                        }
+                    }
+                    .frame(width: width)
                 }
+                .frame(height: 430)
+                .clipped()
             }
-            .padding(.horizontal)
 
             PlayerControlsView()
 
@@ -60,31 +65,7 @@ struct FullPlayerView: View {
                 .ignoresSafeArea()
         )
         .offset(y: max(0, dragOffset))
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    // Only vertical pulls move the sheet; horizontal swipes
-                    // are reserved for track switching.
-                    if abs(value.translation.height) > abs(value.translation.width) {
-                        dragOffset = value.translation.height
-                    }
-                }
-                .onEnded { value in
-                    let horizontal = value.translation.width
-                    let vertical = value.translation.height
-                    if abs(horizontal) > abs(vertical) {
-                        // Horizontal swipe: left → next song, right → previous.
-                        if horizontal < -60 {
-                            playerVM.nextTrack()
-                        } else if horizontal > 60 {
-                            playerVM.previousTrack()
-                        }
-                    } else if vertical > 90 {
-                        playerVM.isFullPlayerPresented = false
-                    }
-                    dragOffset = 0
-                }
-        )
+        .gesture(playerGesture)
         .animation(.spring(duration: 0.3), value: dragOffset)
         .sheet(item: $itemForPlaylist) { item in
             AddToPlaylistSheet(item: item)
@@ -94,7 +75,82 @@ struct FullPlayerView: View {
         }
     }
 
-    /// Dismiss chevron on the left, "⋮" actions menu on the right.
+    // MARK: - Pieces
+
+    private func songCard(for item: MediaItem) -> some View {
+        VStack(spacing: 20) {
+            MediaArtworkView(item: item, size: 330)
+                .shadow(color: .black.opacity(0.5), radius: 14, y: 7)
+            titleBlock(for: item)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func titleBlock(for item: MediaItem?) -> some View {
+        VStack(spacing: 4) {
+            Text(item?.displayName ?? "")
+                .font(.title)
+                .fontWeight(.semibold)
+                .foregroundStyle(theme.textPrimary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            if let artist = item?.artist {
+                Text(artist)
+                    .font(.title3)
+                    .foregroundStyle(theme.textSecondary)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Gestures
+
+    /// Vertical pull dismisses; horizontal drag slides the song carousel.
+    private var playerGesture: some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { value in
+                if abs(value.translation.height) > abs(value.translation.width) {
+                    dragOffset = value.translation.height
+                } else {
+                    var offset = value.translation.width
+                    // Rubber-band when there is no song in that direction.
+                    if offset < 0 && playerVM.nextItem == nil { offset /= 3 }
+                    if offset > 0 && playerVM.previousItem == nil { offset /= 3 }
+                    swipeOffset = offset
+                }
+            }
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                if abs(horizontal) > abs(vertical) {
+                    let width = UIScreen.main.bounds.width
+                    if horizontal < -60, playerVM.nextItem != nil {
+                        commitSwipe(to: -width) { playerVM.nextTrack() }
+                    } else if horizontal > 60, playerVM.previousItem != nil {
+                        commitSwipe(to: width) { playerVM.swipeToPreviousTrack() }
+                    } else {
+                        withAnimation(.spring(duration: 0.25)) { swipeOffset = 0 }
+                    }
+                } else if vertical > 90 {
+                    playerVM.isFullPlayerPresented = false
+                }
+                dragOffset = 0
+            }
+    }
+
+    private func commitSwipe(to target: CGFloat, change: @escaping () -> Void) {
+        withAnimation(.spring(duration: 0.28), completionCriteria: .logicallyComplete) {
+            swipeOffset = target
+        } completion: {
+            change()
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { swipeOffset = 0 }
+        }
+    }
+
+    /// Dismiss chevron on the left; speed, queue, and "⋮" menu on the right.
     private var header: some View {
         HStack {
             Button {
@@ -106,6 +162,29 @@ struct FullPlayerView: View {
             }
 
             Spacer()
+
+            // Speed picker (swapped places with the favorite button, which
+            // now lives between the skip buttons).
+            Menu {
+                ForEach(Constants.Playback.speeds, id: \.self) { speed in
+                    Button {
+                        playerVM.setSpeed(speed)
+                    } label: {
+                        if playerVM.playbackSpeed == speed {
+                            Label(String(format: "%g×", speed), systemImage: "checkmark")
+                        } else {
+                            Text(String(format: "%g×", speed))
+                        }
+                    }
+                }
+            } label: {
+                Text(String(format: "%g×", playerVM.playbackSpeed))
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(theme.chipFill))
+                    .overlay(Capsule().strokeBorder(theme.textPrimary.opacity(0.5), lineWidth: 1))
+            }
 
             Button {
                 showQueue = true
@@ -119,12 +198,6 @@ struct FullPlayerView: View {
                 if let item = playerVM.currentItem {
                     Button { itemForPlaylist = item } label: {
                         Label("Add to Playlist", systemImage: "text.badge.plus")
-                    }
-                    Button { item.isFavorite.toggle() } label: {
-                        Label(
-                            item.isFavorite ? "Remove from Favorites" : "Favorite",
-                            systemImage: item.isFavorite ? "heart.slash" : "heart"
-                        )
                     }
                 }
             } label: {
