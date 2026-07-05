@@ -18,5 +18,5 @@ jobs:
           xcodebuild build \
             -project Distributed-Social/Distributed-Social.xcodeproj \
             -scheme Distributed-Social \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO
