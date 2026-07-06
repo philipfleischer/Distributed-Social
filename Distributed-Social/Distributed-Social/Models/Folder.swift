@@ -2,6 +2,10 @@
 //  Folder.swift
 //  Distributed-Social
 //
+//  NOTE: The folders feature was removed from the UI. The model (and the
+//  MediaItem.folder relationship) stays in the schema so existing on-device
+//  stores keep migrating cleanly.
+//
 
 import SwiftData
 import Foundation

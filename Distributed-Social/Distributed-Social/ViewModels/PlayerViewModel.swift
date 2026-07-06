@@ -27,6 +27,8 @@ final class PlayerViewModel: ObservableObject {
     @Published var upNext: [MediaItem] = []
     /// Transient confirmation message (e.g. "added to queue").
     @Published var toast: String? = nil
+    /// When set, playback pauses automatically at this time.
+    @Published var sleepTimerEnd: Date? = nil
 
     private var toastTask: Task<Void, Never>?
 
@@ -54,6 +56,7 @@ final class PlayerViewModel: ObservableObject {
         playbackService.$repeatMode.assign(to: &$repeatMode)
         playbackService.$upNext.assign(to: &$upNext)
         playbackService.$queuedItems.assign(to: &$queuedItems)
+        playbackService.$sleepTimerEnd.assign(to: &$sleepTimerEnd)
     }
 
     func togglePlayPause() { playbackService.togglePlayPause() }
@@ -74,8 +77,11 @@ final class PlayerViewModel: ObservableObject {
     }
     /// Swipe variant of previous: always goes to the previous song.
     func swipeToPreviousTrack() { playbackService.forcePreviousTrack() }
+    /// Pauses playback after the given number of minutes; nil turns it off.
+    func setSleepTimer(minutes: Int?) { playbackService.setSleepTimer(minutes: minutes) }
 
     private func showToast(_ message: String) {
+        Haptics.success()
         toast = message
         toastTask?.cancel()
         toastTask = Task { [weak self] in

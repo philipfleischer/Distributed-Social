@@ -11,7 +11,6 @@ struct VideoLibraryView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
     @Query(sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
-    @Query(sort: \Folder.name) private var folders: [Folder]
     @StateObject private var viewModel = VideoLibraryViewModel()
 
     @State private var itemForPlaylist: MediaItem?
@@ -20,25 +19,36 @@ struct VideoLibraryView: View {
         let items = viewModel.filteredItems(allItems)
 
         Group {
-                if items.isEmpty {
-                    ContentUnavailableView(
-                        "No Video Files",
-                        systemImage: "film",
-                        description: Text("Import MP4 or MOV files from the Import tab.")
-                    )
-                } else {
-                    List(items) { item in
-                        VideoRowView(
-                            item: item,
-                            isCurrent: playerVM.currentItem?.id == item.id,
-                            isPlaying: playerVM.isPlaying,
-                            onPlay: { handlePlay(item, in: items) }
-                        ) {
+            if items.isEmpty {
+                ContentUnavailableView(
+                    "No Video Files",
+                    systemImage: "film",
+                    description: Text("Import MP4 or MOV files from Settings → Import.")
+                )
+            } else {
+                List(items) { item in
+                    let isMissing = item.isFileMissing
+                    VideoRowView(
+                        item: item,
+                        isCurrent: playerVM.currentItem?.id == item.id,
+                        isPlaying: playerVM.isPlaying,
+                        isMissing: isMissing,
+                        onPlay: { handlePlay(item, in: items) }
+                    ) {
+                        menu(for: item)
+                    }
+                    .listRowBackground(Color.clear)
+                    .contextMenu {
+                        if isMissing {
+                            Button(role: .destructive) { delete(item) } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        } else {
                             menu(for: item)
                         }
-                        .listRowBackground(Color.clear)
-                        .contextMenu { menu(for: item) }
-                        .swipeActions(edge: .leading) {
+                    }
+                    .swipeActions(edge: .leading) {
+                        if !isMissing {
                             Button {
                                 playerVM.addToQueue(item)
                             } label: {
@@ -46,14 +56,15 @@ struct VideoLibraryView: View {
                             }
                             .tint(.green)
                         }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                delete(item)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            delete(item)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
+                }
                 .scrollContentBackground(.hidden)
                 .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
             }
@@ -85,11 +96,9 @@ struct VideoLibraryView: View {
     private func menu(for item: MediaItem) -> some View {
         MediaItemContextMenu(
             item: item,
-            folders: folders,
             onPlayNext: { playerVM.playNext(item) },
             onAddToQueue: { playerVM.addToQueue(item) },
             onAddToPlaylist: { itemForPlaylist = item },
-            onMoveToFolder: { folder in item.folder = folder },
             onDelete: { delete(item) }
         )
     }

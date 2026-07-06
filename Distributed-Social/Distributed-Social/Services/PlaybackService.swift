@@ -32,6 +32,8 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
     @Published private(set) var queuedItems: [MediaItem] = []
     /// Songs that come next naturally from the current context.
     @Published private(set) var upNext: [MediaItem] = []
+    /// When set, playback pauses automatically at this time.
+    @Published private(set) var sleepTimerEnd: Date?
 
     private let player = AVPlayer()
     /// Exposed so `VideoPlayerView` can render the current item.
@@ -49,6 +51,10 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
     /// Tracks whether `.one` repeat has already replayed the current track,
     /// so each song plays exactly twice before advancing.
     private var hasRepeatedCurrentItem = false
+    private var sleepTask: Task<Void, Never>?
+    /// Guards the missing-file auto-skip from looping forever when every
+    /// remaining song's file is gone.
+    private var missingSkipCount = 0
 
     override init() {
         super.init()
@@ -316,6 +322,26 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
         repeatMode = repeatMode.next()
     }
 
+    // MARK: - Sleep timer
+
+    /// Pauses playback after the given number of minutes; nil cancels.
+    func setSleepTimer(minutes: Int?) {
+        sleepTask?.cancel()
+        sleepTask = nil
+        guard let minutes else {
+            sleepTimerEnd = nil
+            return
+        }
+        let end = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        sleepTimerEnd = end
+        sleepTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(minutes * 60))
+            guard let self, !Task.isCancelled else { return }
+            if self.isPlaying { self.togglePlayPause() }
+            self.sleepTimerEnd = nil
+        }
+    }
+
     func saveCurrentPosition() {
         currentItem?.lastPosition = currentTime
     }
@@ -420,8 +446,23 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
     }
 
     private func loadMedia(_ item: MediaItem, autoPlay: Bool, startAt position: TimeInterval) {
+        // Skip songs whose file has vanished, but never loop the whole
+        // queue more than once looking for a playable one.
+        if item.isFileMissing {
+            missingSkipCount += 1
+            if missingSkipCount <= contextQueue.count + queuedItems.count {
+                advanceAfterEnd()
+            } else {
+                missingSkipCount = 0
+                isPlaying = false
+            }
+            return
+        }
+        missingSkipCount = 0
+
         currentItem = item
         hasRepeatedCurrentItem = false
+        if autoPlay { item.playCount += 1 }
 
         // Reset published time state immediately so the scrubber snaps to the
         // start of the new track instead of holding the previous position

@@ -60,6 +60,23 @@ struct HomeView: View {
         return hash
     }
 
+    /// Songs ranked by play count for the "Most Played" row.
+    private var mostPlayed: [MediaItem] {
+        allItems.filter { $0.playCount > 0 && !$0.isFileMissing }
+            .sorted { $0.playCount > $1.playCount }
+            .prefix(6).map { $0 }
+    }
+
+    /// Time-of-day greeting for the header.
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: return "Good morning ☀️"
+        case 12..<18: return "Good afternoon 🌸"
+        case 18..<23: return "Good evening 🌙"
+        default: return "Late night vibes 🎧"
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -79,6 +96,11 @@ struct HomeView: View {
 
     private var homeContent: some View {
         VStack(alignment: .leading, spacing: 28) {
+            Text(greeting)
+                .font(.title3.weight(.medium))
+                .foregroundStyle(theme.textSecondary)
+                .padding(.horizontal)
+
             if !popular.isEmpty {
                 playlistRow(title: "Popular", playlists: popular)
             }
@@ -95,6 +117,10 @@ struct HomeView: View {
             // Favorites — between Recently Played and Your Library
             if !favorites.isEmpty {
                 favoritesRow
+            }
+
+            if !mostPlayed.isEmpty {
+                songRow(title: "Most Played", songs: mostPlayed, showPlayCount: true)
             }
 
             // Library boxes
@@ -156,10 +182,25 @@ struct HomeView: View {
 
             if !matchedItems.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Songs & Videos")
-                        .font(.title2).fontWeight(.semibold)
-                        .foregroundStyle(theme.textPrimary)
-                        .padding(.horizontal)
+                    HStack {
+                        Text("Songs & Videos")
+                            .font(.title2).fontWeight(.semibold)
+                            .foregroundStyle(theme.textPrimary)
+                        Spacer()
+                        // Play every match like a temporary playlist.
+                        Button {
+                            let playable = matchedItems.filter { !$0.isFileMissing }
+                            if let first = playable.first {
+                                playerVM.currentPlaylistID = nil
+                                playerVM.play(item: first, in: playable)
+                            }
+                        } label: {
+                            Label("Play All", systemImage: "play.circle.fill")
+                                .font(.headline)
+                                .foregroundStyle(theme.textPrimary)
+                        }
+                    }
+                    .padding(.horizontal)
 
                     ForEach(matchedItems) { item in
                         Button {
@@ -248,6 +289,43 @@ struct HomeView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+
+    /// Horizontal carousel of songs (used for Most Played).
+    private func songRow(title: String, songs: [MediaItem], showPlayCount: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.title2).fontWeight(.semibold)
+                .foregroundStyle(theme.textPrimary)
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(songs) { item in
+                        Button {
+                            playerVM.currentPlaylistID = nil
+                            playerVM.play(item: item, in: songs)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                MediaArtworkView(item: item, size: 110)
+                                Text(item.displayName)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(theme.textPrimary)
+                                    .lineLimit(1)
+                                    .frame(width: 110, alignment: .leading)
+                                if showPlayCount {
+                                    Text("\(item.playCount) play\(item.playCount == 1 ? "" : "s")")
+                                        .font(.caption)
+                                        .foregroundStyle(theme.textSecondary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .padding(.horizontal)
             }
