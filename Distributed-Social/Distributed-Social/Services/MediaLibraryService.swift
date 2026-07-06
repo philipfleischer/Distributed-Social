@@ -13,14 +13,6 @@ import Combine
 final class MediaLibraryService: ObservableObject, MediaLibraryServiceProtocol {
 
     @discardableResult
-    func createFolder(name: String, colorHex: String = "#7CC5E8",
-                      in context: ModelContext) -> Folder {
-        let folder = Folder(name: name, colorHex: colorHex)
-        context.insert(folder)
-        return folder
-    }
-
-    @discardableResult
     func createPlaylist(name: String, mediaType: MediaType,
                         in context: ModelContext) -> Playlist {
         let playlist = Playlist(name: name, mediaType: mediaType)

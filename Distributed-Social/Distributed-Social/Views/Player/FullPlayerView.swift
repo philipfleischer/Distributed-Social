@@ -140,6 +140,7 @@ struct FullPlayerView: View {
     }
 
     private func commitSwipe(to target: CGFloat, change: @escaping () -> Void) {
+        Haptics.medium()
         withAnimation(.spring(duration: 0.28), completionCriteria: .logicallyComplete) {
             swipeOffset = target
         } completion: {
@@ -163,28 +164,8 @@ struct FullPlayerView: View {
 
             Spacer()
 
-            // Speed picker (swapped places with the favorite button, which
-            // now lives between the skip buttons).
-            Menu {
-                ForEach(Constants.Playback.speeds, id: \.self) { speed in
-                    Button {
-                        playerVM.setSpeed(speed)
-                    } label: {
-                        if playerVM.playbackSpeed == speed {
-                            Label(String(format: "%g×", speed), systemImage: "checkmark")
-                        } else {
-                            Text(String(format: "%g×", speed))
-                        }
-                    }
-                }
-            } label: {
-                Text(String(format: "%g×", playerVM.playbackSpeed))
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(theme.chipFill))
-                    .overlay(Capsule().strokeBorder(theme.textPrimary.opacity(0.5), lineWidth: 1))
-            }
+            AirPlayButton(tint: theme.textPrimary)
+                .frame(width: 44, height: 44)
 
             Button {
                 showQueue = true
@@ -194,11 +175,50 @@ struct FullPlayerView: View {
                     .frame(width: 44, height: 44)
             }
 
+            // "⋮": add to playlist, playback speed, sleep timer.
             Menu {
                 if let item = playerVM.currentItem {
                     Button { itemForPlaylist = item } label: {
                         Label("Add to Playlist", systemImage: "text.badge.plus")
                     }
+                }
+
+                Menu {
+                    ForEach(Constants.Playback.speeds, id: \.self) { speed in
+                        Button { playerVM.setSpeed(speed) } label: {
+                            if playerVM.playbackSpeed == speed {
+                                Label(String(format: "%g×", speed), systemImage: "checkmark")
+                            } else {
+                                Text(String(format: "%g×", speed))
+                            }
+                        }
+                    }
+                } label: {
+                    Label("Speed (\(String(format: "%g×", playerVM.playbackSpeed)))",
+                          systemImage: "gauge.with.needle")
+                }
+
+                Menu {
+                    ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
+                        Button { playerVM.setSleepTimer(minutes: minutes) } label: {
+                            Text("\(minutes) minutes")
+                        }
+                    }
+                    if playerVM.sleepTimerEnd != nil {
+                        Divider()
+                        Button(role: .destructive) {
+                            playerVM.setSleepTimer(minutes: nil)
+                        } label: {
+                            Label("Turn Off", systemImage: "moon.zzz")
+                        }
+                    }
+                } label: {
+                    Label(
+                        playerVM.sleepTimerEnd.map {
+                            "Sleep Timer (until \($0.formatted(date: .omitted, time: .shortened)))"
+                        } ?? "Sleep Timer",
+                        systemImage: playerVM.sleepTimerEnd == nil ? "moon" : "moon.fill"
+                    )
                 }
             } label: {
                 Image(systemName: "ellipsis")

@@ -10,6 +10,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var playerVM: PlayerViewModel
     @State private var selectedTab = 0
 
@@ -64,6 +65,11 @@ struct ContentView: View {
             }
         }
         .animation(.spring(duration: 0.3), value: playerVM.toast)
+        .task {
+            // Old imports predate tag extraction — fill in their embedded
+            // title/artist/cover art once.
+            await FileImportService().backfillMetadataIfNeeded(in: modelContext)
+        }
     }
 }
 

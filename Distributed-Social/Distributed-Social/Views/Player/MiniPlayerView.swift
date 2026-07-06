@@ -106,6 +106,7 @@ struct MiniPlayerView: View {
     }
 
     private func commitSwipe(to target: CGFloat, change: @escaping () -> Void) {
+        Haptics.medium()
         withAnimation(.spring(duration: 0.28), completionCriteria: .logicallyComplete) {
             swipeOffset = target
         } completion: {

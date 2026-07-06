@@ -16,6 +16,8 @@ final class MediaItem {
     var dateImported: Date = Date()
     var lastPosition: TimeInterval = 0
     var isFavorite: Bool = false
+    /// How many times playback of this item has started.
+    var playCount: Int = 0
     /// Artist name from the file's embedded tags (e.g. Spotify/ID3), if any.
     var artist: String?
     /// Embedded cover art from the file's tags; rows fall back to the
@@ -27,6 +29,13 @@ final class MediaItem {
     var mediaType: MediaType {
         get { MediaType(rawValue: mediaTypeRaw) ?? .audio }
         set { mediaTypeRaw = newValue.rawValue }
+    }
+
+    /// True when the underlying file no longer exists on disk (e.g. deleted
+    /// via the Files app). Missing items are shown greyed out and can only
+    /// be deleted.
+    var isFileMissing: Bool {
+        !FileManager.default.fileExists(atPath: localURL.path)
     }
 
     /// Derived at runtime so the library survives reinstalls / OS updates.

@@ -86,6 +86,7 @@ struct PlayerControlsView: View {
 
                 Button {
                     playerVM.currentItem?.isFavorite.toggle()
+                    Haptics.light()
                 } label: {
                     Image(systemName: (playerVM.currentItem?.isFavorite ?? false) ? "heart.fill" : "heart")
                         .font(.title2)

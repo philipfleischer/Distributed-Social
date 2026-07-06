@@ -5,6 +5,7 @@
 
 import Foundation
 import AVFoundation
+import SwiftData
 
 enum FileImportError: LocalizedError {
     case noMediaFiles
@@ -85,6 +86,25 @@ final class FileImportService: FileImportServiceProtocol {
     func deleteFile(_ item: MediaItem) throws {
         guard FileManager.default.fileExists(atPath: item.localURL.path) else { return }
         try FileManager.default.removeItem(at: item.localURL)
+    }
+
+    /// One-time backfill: items imported before tag extraction existed get
+    /// their embedded title/artist/cover art read now. Tracked in
+    /// UserDefaults so it only ever runs once.
+    func backfillMetadataIfNeeded(in context: ModelContext) async {
+        let key = "metadataBackfillDone.v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+
+        let items = (try? context.fetch(FetchDescriptor<MediaItem>())) ?? []
+        for item in items where item.artist == nil && item.artworkData == nil {
+            guard !item.isFileMissing else { continue }
+            let asset = AVURLAsset(url: item.localURL)
+            let tags = await loadEmbeddedTags(from: asset)
+            if let title = tags.title { item.displayName = title }
+            item.artist = tags.artist
+            item.artworkData = tags.artwork
+        }
+        UserDefaults.standard.set(true, forKey: key)
     }
 
     // MARK: - Embedded metadata

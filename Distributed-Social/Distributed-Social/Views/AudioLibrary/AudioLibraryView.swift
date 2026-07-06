@@ -11,7 +11,6 @@ struct AudioLibraryView: View {
     @EnvironmentObject var playerVM: PlayerViewModel
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
     @Query(sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
-    @Query(sort: \Folder.name) private var folders: [Folder]
     @StateObject private var viewModel = AudioLibraryViewModel()
 
     @State private var itemForPlaylist: MediaItem?
@@ -20,25 +19,36 @@ struct AudioLibraryView: View {
         let items = viewModel.filteredItems(allItems)
 
         Group {
-                if items.isEmpty {
-                    ContentUnavailableView(
-                        "No Audio Files",
-                        systemImage: "music.note.list",
-                        description: Text("Import MP3, M4A, or WAV files from the Import tab.")
-                    )
-                } else {
-                    List(items) { item in
-                        AudioRowView(
-                            item: item,
-                            isCurrent: playerVM.currentItem?.id == item.id,
-                            isPlaying: playerVM.isPlaying,
-                            onPlay: { handlePlay(item, in: items) }
-                        ) {
+            if items.isEmpty {
+                ContentUnavailableView(
+                    "No Audio Files",
+                    systemImage: "music.note.list",
+                    description: Text("Import MP3, M4A, or WAV files from Settings → Import.")
+                )
+            } else {
+                List(items) { item in
+                    let isMissing = item.isFileMissing
+                    AudioRowView(
+                        item: item,
+                        isCurrent: playerVM.currentItem?.id == item.id,
+                        isPlaying: playerVM.isPlaying,
+                        isMissing: isMissing,
+                        onPlay: { handlePlay(item, in: items) }
+                    ) {
+                        menu(for: item)
+                    }
+                    .listRowBackground(Color.clear)
+                    .contextMenu {
+                        if isMissing {
+                            Button(role: .destructive) { delete(item) } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        } else {
                             menu(for: item)
                         }
-                        .listRowBackground(Color.clear)
-                        .contextMenu { menu(for: item) }
-                        .swipeActions(edge: .leading) {
+                    }
+                    .swipeActions(edge: .leading) {
+                        if !isMissing {
                             Button {
                                 playerVM.addToQueue(item)
                             } label: {
@@ -46,14 +56,15 @@ struct AudioLibraryView: View {
                             }
                             .tint(.green)
                         }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                delete(item)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            delete(item)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
+                }
                 .scrollContentBackground(.hidden)
                 .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
             }
@@ -85,11 +96,9 @@ struct AudioLibraryView: View {
     private func menu(for item: MediaItem) -> some View {
         MediaItemContextMenu(
             item: item,
-            folders: folders,
             onPlayNext: { playerVM.playNext(item) },
             onAddToQueue: { playerVM.addToQueue(item) },
             onAddToPlaylist: { itemForPlaylist = item },
-            onMoveToFolder: { folder in item.folder = folder },
             onDelete: { delete(item) }
         )
     }
@@ -99,11 +108,9 @@ struct AudioLibraryView: View {
 /// (used by both the "⋮" button and the long-press context menu).
 struct MediaItemContextMenu: View {
     let item: MediaItem
-    let folders: [Folder]
     let onPlayNext: () -> Void
     let onAddToQueue: () -> Void
     let onAddToPlaylist: () -> Void
-    let onMoveToFolder: (Folder?) -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -116,21 +123,6 @@ struct MediaItemContextMenu: View {
         Divider()
         Button { onAddToPlaylist() } label: {
             Label("Add to Playlist", systemImage: "text.badge.plus")
-        }
-        Menu {
-            ForEach(folders) { folder in
-                Button { onMoveToFolder(folder) } label: {
-                    Label(folder.name, systemImage: item.folder?.id == folder.id ? "checkmark" : "folder")
-                }
-            }
-            if item.folder != nil {
-                Divider()
-                Button { onMoveToFolder(nil) } label: {
-                    Label("Remove from Folder", systemImage: "folder.badge.minus")
-                }
-            }
-        } label: {
-            Label("Move to Folder", systemImage: "folder")
         }
         Divider()
         Button(role: .destructive) { onDelete() } label: {
