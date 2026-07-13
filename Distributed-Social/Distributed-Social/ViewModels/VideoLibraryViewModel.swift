@@ -20,6 +20,8 @@ final class VideoLibraryViewModel: ObservableObject {
                 $0.displayName.localizedCaseInsensitiveContains(searchText)
             }
         }
-        return items.sorted { $0.dateImported > $1.dateImported }
+        // The @Query input is already sorted newest-first and filtering
+        // preserves order — no re-sort needed.
+        return items
     }
 }

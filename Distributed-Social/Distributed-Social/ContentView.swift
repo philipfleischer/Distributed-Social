@@ -11,7 +11,8 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
+    let fileImportService: FileImportServiceProtocol
     @State private var selectedTab = 0
 
     var body: some View {
@@ -23,7 +24,7 @@ struct ContentView: View {
                 PlaylistsView()
                     .tabItem { Label("Playlists", systemImage: "list.bullet") }
                     .tag(1)
-                SettingsView()
+                SettingsView(fileImportService: fileImportService)
                     .tabItem { Label("Settings", systemImage: "gear") }
                     .tag(2)
             }
@@ -68,13 +69,16 @@ struct ContentView: View {
         .task {
             // Old imports predate tag extraction — fill in their embedded
             // title/artist/cover art once.
-            await FileImportService().backfillMetadataIfNeeded(in: modelContext)
+            await fileImportService.backfillMetadataIfNeeded(in: modelContext)
         }
     }
 }
 
 #Preview {
-    ContentView()
-        .environmentObject(PlayerViewModel(playbackService: PlaybackService()))
-        .environmentObject(MediaLibraryService())
+    let playbackService = PlaybackService()
+    let fileImportService = FileImportService()
+    ContentView(fileImportService: fileImportService)
+        .environment(PlayerViewModel(playbackService: playbackService))
+        .environment(PlaybackTimeModel(playbackService: playbackService))
+        .environmentObject(MediaLibraryService(fileImportService: fileImportService))
 }

@@ -25,10 +25,40 @@ struct PlaylistTileView: View {
         return value
     }
 
+    @Environment(\.displayScale) private var displayScale
+    /// Freshly decoded cover, tagged with the cache key it belongs to so a
+    /// reused tile never shows another playlist's cover.
+    @State private var decodedCover: (key: String, image: UIImage?)? = nil
+
+    /// Covers render at grid-tile size at most; decode once at this size.
+    private static let coverPointSize: CGFloat = 200
+
     /// Custom cover if chosen, otherwise the first available song artwork.
     private var coverData: Data? {
         if let data = playlist.imageData { return data }
         return playlist.sortedItems.compactMap { $0.mediaItem?.artworkData }.first
+    }
+
+    /// Identity of whatever the cover shows. Changing the custom image or
+    /// the underlying songs produces a new key, so stale cache entries are
+    /// simply never looked up again.
+    private var coverKey: String {
+        if let data = playlist.imageData {
+            return "pl-\(playlist.id.uuidString)-custom-\(data.count)"
+        }
+        if let item = playlist.sortedItems.compactMap(\.mediaItem).first(where: { $0.artworkData != nil }) {
+            return "item-\(item.id.uuidString)"
+        }
+        return "pl-\(playlist.id.uuidString)-generated"
+    }
+
+    /// Cached decode if available; decoding never happens in the body.
+    private var resolvedCover: UIImage? {
+        if let hit = ArtworkThumbnailCache.image(forKey: coverKey, pointSize: Self.coverPointSize) {
+            return hit
+        }
+        if let decodedCover, decodedCover.key == coverKey { return decodedCover.image }
+        return nil
     }
 
     var body: some View {
@@ -59,11 +89,18 @@ struct PlaylistTileView: View {
                 .font(.subheadline)
                 .foregroundStyle(theme.textSecondary)
         }
+        .task(id: coverKey) {
+            guard resolvedCover == nil, let data = coverData else { return }
+            let image = await ArtworkThumbnailCache.loadThumbnail(
+                forKey: coverKey, data: data,
+                pointSize: Self.coverPointSize, scale: displayScale)
+            decodedCover = (coverKey, image)
+        }
     }
 
     @ViewBuilder
     private var cover: some View {
-        if let data = coverData, let uiImage = UIImage(data: data) {
+        if let uiImage = resolvedCover {
             Color.clear
                 .overlay(
                     Image(uiImage: uiImage)

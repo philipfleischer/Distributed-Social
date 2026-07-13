@@ -15,25 +15,29 @@
 //
 
 import AVFoundation
-import Combine
 import MediaPlayer
+import Observation
 import UIKit
 
-final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol {
+// @Observable (not ObservableObject): views re-render only when a property
+// they actually read changes, instead of on every published change — e.g.
+// the queue updates on each track change no longer re-render Home.
+@Observable
+final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
-    @Published private(set) var currentItem: MediaItem?
-    @Published private(set) var isPlaying: Bool = false
-    @Published private(set) var currentTime: TimeInterval = 0
-    @Published private(set) var duration: TimeInterval = 0
-    @Published private(set) var playbackSpeed: Float = 1.0
-    @Published private(set) var isShuffleEnabled: Bool = false
-    @Published private(set) var repeatMode: RepeatMode = .off
+    private(set) var currentItem: MediaItem?
+    private(set) var isPlaying: Bool = false
+    private(set) var currentTime: TimeInterval = 0
+    private(set) var duration: TimeInterval = 0
+    private(set) var playbackSpeed: Float = 1.0
+    private(set) var isShuffleEnabled: Bool = false
+    private(set) var repeatMode: RepeatMode = .off
     /// Songs the user queued manually (FIFO) — play before the context resumes.
-    @Published private(set) var queuedItems: [MediaItem] = []
+    private(set) var queuedItems: [MediaItem] = []
     /// Songs that come next naturally from the current context.
-    @Published private(set) var upNext: [MediaItem] = []
+    private(set) var upNext: [MediaItem] = []
     /// When set, playback pauses automatically at this time.
-    @Published private(set) var sleepTimerEnd: Date?
+    private(set) var sleepTimerEnd: Date?
 
     private let player = AVPlayer()
     /// Exposed so `VideoPlayerView` can render the current item.
@@ -42,6 +46,8 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
     private var timeObserver: Any?
     private var itemEndObserver: NSObjectProtocol?
     private var resignObserver: NSObjectProtocol?
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
 
     private var originalQueue: [MediaItem] = []   // unshuffled context order
     private var contextQueue: [MediaItem] = []    // active context order
@@ -62,6 +68,8 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
         addTimeObserver()
         addEndObserver()
         addResignObserver()
+        addInterruptionObserver()
+        addRouteChangeObserver()
         setupRemoteCommands()
     }
 
@@ -106,6 +114,60 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
             queue: .main
         ) { [weak self] _ in
             self?.saveCurrentPosition()
+        }
+    }
+
+    /// Phone calls, alarms, Siri: the system pauses the player itself — keep
+    /// `isPlaying` in sync so the UI shows the truth, and resume when the
+    /// interruption ends (when the system says it's appropriate).
+    private func addInterruptionObserver() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleInterruption(notification)
+        }
+    }
+
+    private func handleInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+        switch type {
+        case .began:
+            isPlaying = false
+            updateNowPlayingInfo()
+        case .ended:
+            let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            if AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume),
+               currentItem != nil {
+                player.play()
+                player.rate = playbackSpeed
+                isPlaying = true
+                updateNowPlayingInfo()
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    /// Headphones unplugged / Bluetooth dropped: the system pauses the
+    /// player — sync `isPlaying` so the UI doesn't keep showing "playing".
+    private func addRouteChangeObserver() {
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let info = notification.userInfo,
+                  let reasonValue = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue),
+                  reason == .oldDeviceUnavailable,
+                  self.isPlaying else { return }
+            self.isPlaying = false
+            self.updateNowPlayingInfo()
         }
     }
 
@@ -170,15 +232,32 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
                 : MPNowPlayingInfoMediaType.video.rawValue
         ]
         info[MPMediaItemPropertyArtist] = item.artist ?? "Distributed-Social"
-        if let data = item.artworkData, let image = UIImage(data: data) {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        // Decode the artwork once per track — this method runs on every
+        // play/pause/seek/speed change, and re-decoding the full-size image
+        // each time was a hidden CPU cost.
+        if nowPlayingArtworkItemID != item.id {
+            nowPlayingArtworkItemID = item.id
+            if let data = item.artworkData, let image = UIImage(data: data) {
+                nowPlayingArtwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            } else {
+                nowPlayingArtwork = nil
+            }
+        }
+        if let artwork = nowPlayingArtwork {
+            info[MPMediaItemPropertyArtwork] = artwork
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
+    /// Lock-screen artwork for the current track, built once per track change.
+    private var nowPlayingArtwork: MPMediaItemArtwork?
+    private var nowPlayingArtworkItemID: UUID?
+
     // MARK: - Playback end handling
 
     private func handlePlaybackEnd() {
+        // A finished song shouldn't "resume" at its final second next time.
+        currentItem?.lastPosition = 0
         if repeatMode == .one && !hasRepeatedCurrentItem, let item = currentItem {
             // Replay by reloading the item from scratch — the same proven
             // path as any track change. Seeking the *ended* player item and
@@ -337,13 +416,33 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
         sleepTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(minutes * 60))
             guard let self, !Task.isCancelled else { return }
-            if self.isPlaying { self.togglePlayPause() }
+            if self.isPlaying { await self.fadeOutAndPause() }
             self.sleepTimerEnd = nil
         }
     }
 
+    /// Fades the volume down over a few seconds before pausing — abrupt
+    /// silence is jarring when falling asleep. The volume is restored after
+    /// pausing so the next manual play starts at full volume.
+    private func fadeOutAndPause() async {
+        let steps = 30
+        for step in 1...steps {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else {
+                player.volume = 1
+                return
+            }
+            player.volume = 1 - Float(step) / Float(steps)
+        }
+        if isPlaying { togglePlayPause() }
+        player.volume = 1
+    }
+
     func saveCurrentPosition() {
-        currentItem?.lastPosition = currentTime
+        guard let item = currentItem else { return }
+        // A track sitting within a second of its end is finished — store 0
+        // so it starts over next time instead of resuming at the very end.
+        item.lastPosition = currentTime >= max(0, duration - 1) ? 0 : currentTime
     }
 
     // MARK: - Queue management
@@ -501,5 +600,7 @@ final class PlaybackService: NSObject, ObservableObject, PlaybackServiceProtocol
         if let obs = timeObserver { player.removeTimeObserver(obs) }
         if let obs = itemEndObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = resignObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = interruptionObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = routeChangeObserver { NotificationCenter.default.removeObserver(obs) }
     }
 }

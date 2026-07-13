@@ -13,6 +13,28 @@ struct MediaArtworkView: View {
     let item: MediaItem
     var size: CGFloat = 56
 
+    @Environment(\.displayScale) private var displayScale
+    /// Freshly decoded thumbnail, tagged with the item it belongs to so a
+    /// reused row never shows the previous item's artwork.
+    @State private var decoded: (itemID: UUID, image: UIImage?)? = nil
+
+    private var cacheKey: String { "item-\(item.id.uuidString)" }
+
+    /// Cached decode if available; decoding never happens in the body.
+    private var resolvedImage: UIImage? {
+        if let hit = ArtworkThumbnailCache.image(forKey: cacheKey, pointSize: size) {
+            return hit
+        }
+        if let decoded, decoded.itemID == item.id { return decoded.image }
+        return nil
+    }
+
+    /// True when the decode ran for this item but produced no image
+    /// (corrupt data) — fall back to the generated artwork.
+    private var decodeFailed: Bool {
+        decoded?.itemID == item.id && decoded?.image == nil
+    }
+
     /// Stable per-item value used to vary the decorative shape.
     private var seed: Int {
         var value = 0
@@ -24,7 +46,7 @@ struct MediaArtworkView: View {
 
     var body: some View {
         Group {
-            if let data = item.artworkData, let uiImage = UIImage(data: data) {
+            if let uiImage = resolvedImage {
                 // Embedded cover art from the file's tags.
                 Color.clear
                     .overlay(
@@ -33,11 +55,21 @@ struct MediaArtworkView: View {
                             .scaledToFill()
                     )
                     .clipShape(RoundedRectangle(cornerRadius: size * 0.21))
-            } else {
+            } else if item.artworkData == nil || decodeFailed {
                 generatedArtwork
+            } else {
+                // Artwork exists but its decode hasn't finished yet.
+                RoundedRectangle(cornerRadius: size * 0.21)
+                    .fill(.gray.opacity(0.15))
             }
         }
         .frame(width: size, height: size)
+        .task(id: item.id) {
+            guard resolvedImage == nil, let data = item.artworkData else { return }
+            let image = await ArtworkThumbnailCache.loadThumbnail(
+                forKey: cacheKey, data: data, pointSize: size, scale: displayScale)
+            decoded = (item.id, image)
+        }
     }
 
     /// Fallback: unique gradient + motif derived from the item's UUID.

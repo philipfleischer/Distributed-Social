@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct FavoritesView: View {
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
     @Query(sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
 
@@ -62,13 +62,8 @@ struct FavoritesView: View {
                         playerVM.currentPlaylistID = nil
                         playerVM.play(item: item, in: favorites)
                     }
-                    .swipeActions(edge: .leading) {
-                        Button {
-                            playerVM.addToQueue(item)
-                        } label: {
-                            Label("Queue", systemImage: "text.append")
-                        }
-                        .tint(.green)
+                    .swipeToQueue {
+                        playerVM.addToQueue(item)
                     }
                     .swipeActions(edge: .trailing) {
                         Button {

@@ -11,7 +11,7 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
     @Query private var playlists: [Playlist]
     @Query private var allItems: [MediaItem]
@@ -202,33 +202,37 @@ struct HomeView: View {
                     }
                     .padding(.horizontal)
 
-                    ForEach(matchedItems) { item in
-                        Button {
-                            playerVM.currentPlaylistID = nil
-                            playerVM.play(item: item, in: matchedItems)
-                        } label: {
-                            HStack(spacing: 12) {
-                                MediaArtworkView(item: item, size: 44)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.displayName)
-                                        .font(.headline)
-                                        .foregroundStyle(theme.textPrimary)
-                                        .lineLimit(1)
-                                    if let artist = item.artist {
-                                        Text(artist)
-                                            .font(.subheadline)
-                                            .foregroundStyle(theme.textSecondary)
+                    // Lazy: a short query can match most of the library —
+                    // only build (and decode artwork for) visible rows.
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(matchedItems) { item in
+                            Button {
+                                playerVM.currentPlaylistID = nil
+                                playerVM.play(item: item, in: matchedItems)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    MediaArtworkView(item: item, size: 44)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.displayName)
+                                            .font(.headline)
+                                            .foregroundStyle(theme.textPrimary)
                                             .lineLimit(1)
+                                        if let artist = item.artist {
+                                            Text(artist)
+                                                .font(.subheadline)
+                                                .foregroundStyle(theme.textSecondary)
+                                                .lineLimit(1)
+                                        }
                                     }
+                                    Spacer()
+                                    Text(item.duration.formattedTime)
+                                        .font(.subheadline)
+                                        .foregroundStyle(theme.textSecondary)
                                 }
-                                Spacer()
-                                Text(item.duration.formattedTime)
-                                    .font(.subheadline)
-                                    .foregroundStyle(theme.textSecondary)
+                                .padding(.horizontal)
                             }
-                            .padding(.horizontal)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }

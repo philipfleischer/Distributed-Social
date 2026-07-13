@@ -31,11 +31,25 @@ final class MediaItem {
         set { mediaTypeRaw = newValue.rawValue }
     }
 
+    /// Bumped when the app returns to the foreground so the cached
+    /// missing-file checks below are re-verified — files can only disappear
+    /// (e.g. deleted in the Files app) while this app is backgrounded.
+    static var fileCheckGeneration: Int = 0
+
+    /// Cached filesystem check: stat-ing the disk for every row on every
+    /// render is a measurable CPU/battery cost on large libraries.
+    @Transient private var missingCheckGeneration: Int = -1
+    @Transient private var missingCached: Bool = false
+
     /// True when the underlying file no longer exists on disk (e.g. deleted
     /// via the Files app). Missing items are shown greyed out and can only
     /// be deleted.
     var isFileMissing: Bool {
-        !FileManager.default.fileExists(atPath: localURL.path)
+        if missingCheckGeneration != MediaItem.fileCheckGeneration {
+            missingCached = !FileManager.default.fileExists(atPath: localURL.path)
+            missingCheckGeneration = MediaItem.fileCheckGeneration
+        }
+        return missingCached
     }
 
     /// Derived at runtime so the library survives reinstalls / OS updates.

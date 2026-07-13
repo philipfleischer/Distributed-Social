@@ -8,7 +8,7 @@ import SwiftData
 
 struct VideoLibraryView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
     @Query(sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
     @StateObject private var viewModel = VideoLibraryViewModel()
@@ -28,10 +28,13 @@ struct VideoLibraryView: View {
             } else {
                 List(items) { item in
                     let isMissing = item.isFileMissing
+                    let isCurrent = playerVM.currentItem?.id == item.id
                     VideoRowView(
                         item: item,
-                        isCurrent: playerVM.currentItem?.id == item.id,
-                        isPlaying: playerVM.isPlaying,
+                        isCurrent: isCurrent,
+                        // Scoped to the row: play/pause then only re-renders
+                        // the current row, not the whole list.
+                        isPlaying: isCurrent && playerVM.isPlaying,
                         isMissing: isMissing,
                         onPlay: { handlePlay(item, in: items) }
                     ) {
@@ -47,15 +50,8 @@ struct VideoLibraryView: View {
                             menu(for: item)
                         }
                     }
-                    .swipeActions(edge: .leading) {
-                        if !isMissing {
-                            Button {
-                                playerVM.addToQueue(item)
-                            } label: {
-                                Label("Queue", systemImage: "text.append")
-                            }
-                            .tint(.green)
-                        }
+                    .swipeToQueue(enabled: !isMissing) {
+                        playerVM.addToQueue(item)
                     }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
@@ -88,8 +84,7 @@ struct VideoLibraryView: View {
     }
 
     private func delete(_ item: MediaItem) {
-        mediaLibraryService.deleteMediaItem(
-            item, fileImportService: FileImportService(), in: modelContext)
+        mediaLibraryService.deleteMediaItem(item, in: modelContext)
     }
 
     @ViewBuilder

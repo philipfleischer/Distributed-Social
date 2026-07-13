@@ -13,7 +13,7 @@ import PhotosUI
 struct PlaylistsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
     @Query(sort: \Playlist.name) private var playlists: [Playlist]
 
@@ -76,7 +76,9 @@ struct PlaylistsView: View {
                 guard let newValue, let target = playlistForImage else { return }
                 Task {
                     if let data = try? await newValue.loadTransferable(type: Data.self) {
-                        target.imageData = data
+                        // Store a display-sized re-encode, not the multi-MB
+                        // original photo.
+                        target.imageData = await ArtworkThumbnailCache.downscaledCoverData(from: data) ?? data
                     }
                     pickedImage = nil
                     playlistForImage = nil

@@ -8,7 +8,7 @@ import SwiftData
 
 struct PlaylistDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
     let playlist: Playlist
 
@@ -57,12 +57,11 @@ struct PlaylistDetailView: View {
                         renumber()
                     }
                     .onMove { from, to in
-                        var items = sortedItems
-                        items.move(fromOffsets: from, toOffset: to)
-                        for (index, pi) in items.enumerated() {
-                            pi.sortOrder = index
-                        }
+                        moveItems(from: from, to: to)
                     }
+                    // Disabled while searching: the drag indices refer to
+                    // the filtered rows and would move the wrong songs.
+                    .moveDisabled(!searchText.isEmpty)
                 } header: {
                     Text("\(sortedItems.count) song\(sortedItems.count == 1 ? "" : "s") · \(formattedTotal)")
                         .font(.subheadline)
@@ -145,15 +144,8 @@ struct PlaylistDetailView: View {
             registerPlay(of: item)
             playerVM.play(item: item, in: queue)
         }
-        .swipeActions(edge: .leading) {
-            if !isMissing {
-                Button {
-                    playerVM.addToQueue(item)
-                } label: {
-                    Label("Queue", systemImage: "text.append")
-                }
-                .tint(.green)
-            }
+        .swipeToQueue(enabled: !isMissing) {
+            playerVM.addToQueue(item)
         }
         .listRowBackground(Color.clear)
     }
@@ -190,6 +182,14 @@ struct PlaylistDetailView: View {
         playlist.lastPlayedDate = Date()
         playlist.playCount += 1
         playerVM.currentPlaylistID = playlist.id
+    }
+
+    private func moveItems(from: IndexSet, to: Int) {
+        var items = sortedItems
+        items.move(fromOffsets: from, toOffset: to)
+        for (index, pi) in items.enumerated() {
+            pi.sortOrder = index
+        }
     }
 
     private func renumber() {

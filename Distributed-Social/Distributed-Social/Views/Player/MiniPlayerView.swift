@@ -9,7 +9,7 @@
 import SwiftUI
 
 struct MiniPlayerView: View {
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
     @State private var swipeOffset: CGFloat = 0
 
@@ -55,9 +55,7 @@ struct MiniPlayerView: View {
                     .font(.headline)
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
-                Text(playerVM.currentTime.formattedTime + " / " + playerVM.duration.formattedTime)
-                    .font(.subheadline)
-                    .foregroundStyle(theme.textSecondary)
+                MiniTimeLabel()
             }
 
             Spacer()
@@ -115,5 +113,18 @@ struct MiniPlayerView: View {
             transaction.disablesAnimations = true
             withTransaction(transaction) { swipeOffset = 0 }
         }
+    }
+}
+
+/// The elapsed/total clock, isolated in its own view so the twice-a-second
+/// time ticks re-render only this label instead of the whole mini player.
+private struct MiniTimeLabel: View {
+    @Environment(PlaybackTimeModel.self) private var timeModel
+    @EnvironmentObject var themeStore: ThemeStore
+
+    var body: some View {
+        Text(timeModel.currentTime.formattedTime + " / " + timeModel.duration.formattedTime)
+            .font(.subheadline)
+            .foregroundStyle(themeStore.theme.textSecondary)
     }
 }

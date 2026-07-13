@@ -34,6 +34,8 @@ struct MarqueeText: View {
                 )
                 .offset(x: offsetX)
                 .frame(maxHeight: .infinity, alignment: .leading)
+                .onAppear { startSlidingIfNeeded(containerWidth: geo.size.width) }
+                .onDisappear { stopSliding() }
         }
         .frame(height: 22)
         .clipped()
@@ -41,7 +43,8 @@ struct MarqueeText: View {
 
     private func startSlidingIfNeeded(containerWidth: CGFloat) {
         let overflow = textWidth - containerWidth
-        guard overflow > 0 else { return }
+        // offsetX != 0 means the slide is already running.
+        guard overflow > 0, offsetX == 0 else { return }
         // Slide speed scales with how much text is hidden.
         withAnimation(
             .linear(duration: Double(overflow) / 20)
@@ -50,5 +53,14 @@ struct MarqueeText: View {
         ) {
             offsetX = -overflow
         }
+    }
+
+    /// Cancels the repeat-forever slide when the view scrolls off screen —
+    /// an endless animation on an invisible view keeps the render loop
+    /// awake and drains the battery.
+    private func stopSliding() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { offsetX = 0 }
     }
 }

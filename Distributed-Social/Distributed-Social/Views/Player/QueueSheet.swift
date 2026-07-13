@@ -11,7 +11,7 @@
 import SwiftUI
 
 struct QueueSheet: View {
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
     @Environment(\.dismiss) private var dismiss
 
