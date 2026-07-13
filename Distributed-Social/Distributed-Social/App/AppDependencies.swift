@@ -13,11 +13,13 @@ final class AppDependencies {
     let fileImportService: FileImportServiceProtocol
     let mediaLibraryService: MediaLibraryService
     let playerViewModel: PlayerViewModel
+    let playbackTimeModel: PlaybackTimeModel
 
     init() {
         playbackService = PlaybackService()
         fileImportService = FileImportService()
-        mediaLibraryService = MediaLibraryService()
+        mediaLibraryService = MediaLibraryService(fileImportService: fileImportService)
         playerViewModel = PlayerViewModel(playbackService: playbackService)
+        playbackTimeModel = PlaybackTimeModel(playbackService: playbackService)
     }
 }

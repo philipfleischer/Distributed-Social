@@ -10,12 +10,15 @@
 import SwiftUI
 
 struct FullPlayerView: View {
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
     @State private var itemForPlaylist: MediaItem?
     @State private var showQueue = false
     @State private var dragOffset: CGFloat = 0
     @State private var swipeOffset: CGFloat = 0
+    /// Card width measured by the carousel — used by the swipe gesture so
+    /// it doesn't depend on the deprecated UIScreen.main.
+    @State private var carouselWidth: CGFloat = 0
 
     private var theme: AppTheme { themeStore.theme }
 
@@ -48,6 +51,8 @@ struct FullPlayerView: View {
                         }
                     }
                     .frame(width: width)
+                    .onAppear { carouselWidth = width }
+                    .onChange(of: width) { _, newWidth in carouselWidth = newWidth }
                 }
                 .frame(height: 430)
                 .clipped()
@@ -124,7 +129,7 @@ struct FullPlayerView: View {
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
                 if abs(horizontal) > abs(vertical) {
-                    let width = UIScreen.main.bounds.width
+                    let width = carouselWidth > 0 ? carouselWidth : 393
                     if horizontal < -60, playerVM.nextItem != nil {
                         commitSwipe(to: -width) { playerVM.nextTrack() }
                     } else if horizontal > 60, playerVM.previousItem != nil {

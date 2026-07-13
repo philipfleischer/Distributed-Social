@@ -2,61 +2,53 @@
 //  PlayerViewModel.swift
 //  Distributed-Social
 //
-//  Bridges PlaybackService state to all player UI via Combine bindings.
+//  Bridges PlaybackService state to all player UI. @Observable tracking is
+//  per-property: a view re-renders only when a property it actually read
+//  changes, so e.g. queue updates no longer re-render Home or the libraries.
 //
 
 import AVFoundation
-import Combine
 import Foundation
+import Observation
 
-final class PlayerViewModel: ObservableObject {
-    @Published var isPlaying: Bool = false
-    @Published var currentTime: TimeInterval = 0
-    @Published var duration: TimeInterval = 0
-    @Published var currentItem: MediaItem? = nil
-    @Published var playbackSpeed: Float = 1.0
-    @Published var isShuffleEnabled: Bool = false
-    @Published var repeatMode: RepeatMode = .off
-    @Published var isFullPlayerPresented: Bool = false
+@Observable
+final class PlayerViewModel {
+    // NOTE: currentTime/duration deliberately live in PlaybackTimeModel —
+    // keeping the twice-a-second clock out of this type makes it impossible
+    // for a screen to re-render on time ticks by accident.
+    var isFullPlayerPresented: Bool = false
     /// The playlist currently being played, if playback started from one —
     /// used to highlight it in the Playlists grid and Home carousels.
-    @Published var currentPlaylistID: UUID? = nil
-    /// Manually queued songs (FIFO) — play before the context resumes.
-    @Published var queuedItems: [MediaItem] = []
-    /// Songs that come next naturally from the current context.
-    @Published var upNext: [MediaItem] = []
+    var currentPlaylistID: UUID? = nil
     /// Transient confirmation message (e.g. "added to queue").
-    @Published var toast: String? = nil
-    /// When set, playback pauses automatically at this time.
-    @Published var sleepTimerEnd: Date? = nil
+    private(set) var toast: String? = nil
 
-    private var toastTask: Task<Void, Never>?
+    @ObservationIgnored private var toastTask: Task<Void, Never>?
+    private let playbackService: PlaybackService
+
+    // Service state, forwarded — observation tracks straight through these
+    // computed properties into the @Observable PlaybackService.
+    var isPlaying: Bool { playbackService.isPlaying }
+    var currentItem: MediaItem? { playbackService.currentItem }
+    var playbackSpeed: Float { playbackService.playbackSpeed }
+    var isShuffleEnabled: Bool { playbackService.isShuffleEnabled }
+    var repeatMode: RepeatMode { playbackService.repeatMode }
+    /// Manually queued songs (FIFO) — play before the context resumes.
+    var queuedItems: [MediaItem] { playbackService.queuedItems }
+    /// Songs that come next naturally from the current context.
+    var upNext: [MediaItem] { playbackService.upNext }
+    /// When set, playback pauses automatically at this time.
+    var sleepTimerEnd: Date? { playbackService.sleepTimerEnd }
 
     /// What a next / previous swipe would play — drives the slide-in previews.
     var nextItem: MediaItem? { playbackService.peekNext }
     var previousItem: MediaItem? { playbackService.peekPrevious }
-
-    private let playbackService: PlaybackService
 
     /// Exposed so the video player view can attach to the active AVPlayer.
     var avPlayer: AVPlayer { playbackService.avPlayer }
 
     init(playbackService: PlaybackService) {
         self.playbackService = playbackService
-        bindToService()
-    }
-
-    private func bindToService() {
-        playbackService.$isPlaying.assign(to: &$isPlaying)
-        playbackService.$currentTime.assign(to: &$currentTime)
-        playbackService.$duration.assign(to: &$duration)
-        playbackService.$currentItem.assign(to: &$currentItem)
-        playbackService.$playbackSpeed.assign(to: &$playbackSpeed)
-        playbackService.$isShuffleEnabled.assign(to: &$isShuffleEnabled)
-        playbackService.$repeatMode.assign(to: &$repeatMode)
-        playbackService.$upNext.assign(to: &$upNext)
-        playbackService.$queuedItems.assign(to: &$queuedItems)
-        playbackService.$sleepTimerEnd.assign(to: &$sleepTimerEnd)
     }
 
     func togglePlayPause() { playbackService.togglePlayPause() }

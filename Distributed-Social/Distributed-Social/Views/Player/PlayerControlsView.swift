@@ -9,10 +9,8 @@
 import SwiftUI
 
 struct PlayerControlsView: View {
-    @EnvironmentObject var playerVM: PlayerViewModel
+    @Environment(PlayerViewModel.self) private var playerVM
     @EnvironmentObject var themeStore: ThemeStore
-    @State private var isScrubbing = false
-    @State private var scrubPosition: TimeInterval = 0
 
     private var theme: AppTheme { themeStore.theme }
     /// Inactive toggle buttons use plain grey so the active accent color is
@@ -21,27 +19,8 @@ struct PlayerControlsView: View {
 
     var body: some View {
         VStack(spacing: 22) {
-            // Progress bar
-            VStack(spacing: 4) {
-                Slider(
-                    value: Binding(
-                        get: { isScrubbing ? scrubPosition : playerVM.currentTime },
-                        set: { scrubPosition = $0 }
-                    ),
-                    in: 0...(playerVM.duration > 0 ? playerVM.duration : 1)
-                ) { editing in
-                    isScrubbing = editing
-                    if !editing { playerVM.seek(to: scrubPosition) }
-                }
-                .tint(theme.textPrimary)
-                HStack {
-                    Text(playerVM.currentTime.formattedTime)
-                        .font(.subheadline).foregroundStyle(theme.textSecondary)
-                    Spacer()
-                    Text(playerVM.duration.formattedTime)
-                        .font(.subheadline).foregroundStyle(theme.textSecondary)
-                }
-            }
+            // Progress bar (separate view: it alone re-renders on time ticks)
+            PlaybackProgressView()
 
             // Main controls row: shuffle | prev | play/pause | next | repeat
             HStack(spacing: 32) {
@@ -101,6 +80,41 @@ struct PlayerControlsView: View {
             .foregroundStyle(theme.textPrimary)
         }
         .padding()
+    }
+}
+
+/// The scrubber + time labels. Observes PlaybackTimeModel so the twice-a-
+/// second position updates re-render only this small view.
+struct PlaybackProgressView: View {
+    @Environment(PlayerViewModel.self) private var playerVM
+    @Environment(PlaybackTimeModel.self) private var timeModel
+    @EnvironmentObject var themeStore: ThemeStore
+    @State private var isScrubbing = false
+    @State private var scrubPosition: TimeInterval = 0
+
+    private var theme: AppTheme { themeStore.theme }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Slider(
+                value: Binding(
+                    get: { isScrubbing ? scrubPosition : timeModel.currentTime },
+                    set: { scrubPosition = $0 }
+                ),
+                in: 0...(timeModel.duration > 0 ? timeModel.duration : 1)
+            ) { editing in
+                isScrubbing = editing
+                if !editing { playerVM.seek(to: scrubPosition) }
+            }
+            .tint(theme.textPrimary)
+            HStack {
+                Text(timeModel.currentTime.formattedTime)
+                    .font(.subheadline).foregroundStyle(theme.textSecondary)
+                Spacer()
+                Text(timeModel.duration.formattedTime)
+                    .font(.subheadline).foregroundStyle(theme.textSecondary)
+            }
+        }
         .onChange(of: playerVM.currentItem?.id) { _, _ in
             // New track: drop any in-flight scrub state so the thumb snaps
             // back to the start immediately.

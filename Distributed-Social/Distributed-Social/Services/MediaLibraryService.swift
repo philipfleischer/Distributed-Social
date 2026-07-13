@@ -12,6 +12,12 @@ import Combine
 
 final class MediaLibraryService: ObservableObject, MediaLibraryServiceProtocol {
 
+    private let fileImportService: FileImportServiceProtocol
+
+    init(fileImportService: FileImportServiceProtocol) {
+        self.fileImportService = fileImportService
+    }
+
     @discardableResult
     func createPlaylist(name: String, mediaType: MediaType,
                         in context: ModelContext) -> Playlist {
@@ -27,8 +33,7 @@ final class MediaLibraryService: ObservableObject, MediaLibraryServiceProtocol {
         context.insert(pi)
     }
 
-    func deleteMediaItem(_ item: MediaItem, fileImportService: FileImportServiceProtocol,
-                         in context: ModelContext) {
+    func deleteMediaItem(_ item: MediaItem, in context: ModelContext) {
         try? fileImportService.deleteFile(item)
         context.delete(item)
     }

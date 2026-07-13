@@ -18,6 +18,12 @@ struct AddToPlaylistSheet: View {
         playlists.filter { $0.mediaType == item.mediaType }
     }
 
+    /// Playlists that already contain this song — shown with a checkmark
+    /// instead of an add button so it can't be added twice.
+    private var containingPlaylistIDs: Set<UUID> {
+        Set((item.playlistItems ?? []).compactMap { $0.playlist?.id })
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -29,6 +35,7 @@ struct AddToPlaylistSheet: View {
                     )
                 } else {
                     List(matchingPlaylists) { playlist in
+                        let alreadyIn = containingPlaylistIDs.contains(playlist.id)
                         Button {
                             mediaLibraryService.addItem(item, toPlaylist: playlist, in: modelContext)
                             dismiss()
@@ -36,10 +43,11 @@ struct AddToPlaylistSheet: View {
                             HStack {
                                 Text(playlist.name)
                                 Spacer()
-                                Image(systemName: "plus.circle")
-                                    .foregroundStyle(Color.skyBlue)
+                                Image(systemName: alreadyIn ? "checkmark.circle.fill" : "plus.circle")
+                                    .foregroundStyle(alreadyIn ? Color.secondary : Color.skyBlue)
                             }
                         }
+                        .disabled(alreadyIn)
                     }
                 }
             }

@@ -12,7 +12,11 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
     @EnvironmentObject var themeStore: ThemeStore
-    @StateObject private var importVM = ImportViewModel(fileImportService: FileImportService())
+    @StateObject private var importVM: ImportViewModel
+
+    init(fileImportService: FileImportServiceProtocol) {
+        _importVM = StateObject(wrappedValue: ImportViewModel(fileImportService: fileImportService))
+    }
 
     private var theme: AppTheme { themeStore.theme }
 
