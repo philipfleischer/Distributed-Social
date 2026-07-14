@@ -41,7 +41,11 @@ struct SwipeToQueueModifier: ViewModifier {
                         .padding(.leading, 2)
                 }
             }
-            .gesture(drag, including: isEnabled ? .all : .subviews)
+            // simultaneousGesture: an exclusive .gesture claims leftward
+            // drags too (even though we ignore them), which blocked the
+            // List's trailing swipe-to-delete. Simultaneous lets the system
+            // swipe run; we only ever react to rightward drags.
+            .simultaneousGesture(drag, including: isEnabled ? .all : .subviews)
     }
 
     private var drag: some Gesture {
