@@ -13,7 +13,13 @@ import UIKit
 import ImageIO
 
 enum ArtworkThumbnailCache {
-    private static let images = NSCache<NSString, UIImage>()
+    private static let images: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        // Evict proactively at ~48 MB of decoded pixels instead of waiting
+        // for a system memory-pressure warning.
+        cache.totalCostLimit = 48 * 1024 * 1024
+        return cache
+    }()
 
     /// Synchronous lookup for view bodies — returns instantly on re-render
     /// or scroll-back without touching the model's data blob.
@@ -32,7 +38,8 @@ enum ArtworkThumbnailCache {
             downsample(data: data, maxPixel: maxPixel)
         }.value
         if let decoded {
-            images.setObject(decoded, forKey: cacheKey(key, pointSize))
+            let cost = Int(decoded.size.width * decoded.size.height * decoded.scale * decoded.scale) * 4
+            images.setObject(decoded, forKey: cacheKey(key, pointSize), cost: cost)
         }
         return decoded
     }
