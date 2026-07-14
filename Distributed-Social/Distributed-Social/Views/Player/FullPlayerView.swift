@@ -11,6 +11,8 @@ import SwiftUI
 
 struct FullPlayerView: View {
     @Environment(PlayerViewModel.self) private var playerVM
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var mediaLibraryService: MediaLibraryService
     @EnvironmentObject var themeStore: ThemeStore
     @State private var itemForPlaylist: MediaItem?
     @State private var showQueue = false
@@ -144,6 +146,17 @@ struct FullPlayerView: View {
             }
     }
 
+    /// Deletes the playing song: playback advances to the next track (or
+    /// stops and closes the player when nothing is left), then the file and
+    /// library entry are removed.
+    private func deleteCurrentSong(_ item: MediaItem) {
+        playerVM.removeFromPlayback(item)
+        if playerVM.currentItem == nil {
+            playerVM.isFullPlayerPresented = false
+        }
+        mediaLibraryService.deleteMediaItem(item, in: modelContext)
+    }
+
     private func commitSwipe(to target: CGFloat, change: @escaping () -> Void) {
         Haptics.medium()
         withAnimation(.spring(duration: 0.28), completionCriteria: .logicallyComplete) {
@@ -224,6 +237,15 @@ struct FullPlayerView: View {
                         } ?? "Sleep Timer",
                         systemImage: playerVM.sleepTimerEnd == nil ? "moon" : "moon.fill"
                     )
+                }
+
+                if let item = playerVM.currentItem {
+                    Divider()
+                    Button(role: .destructive) {
+                        deleteCurrentSong(item)
+                    } label: {
+                        Label("Delete Song", systemImage: "trash")
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")

@@ -69,6 +69,9 @@ final class PlayerViewModel {
     }
     /// Swipe variant of previous: always goes to the previous song.
     func swipeToPreviousTrack() { playbackService.forcePreviousTrack() }
+    /// Detaches an about-to-be-deleted item from playback (advances past it
+    /// or stops) — call before removing it from the library.
+    func removeFromPlayback(_ item: MediaItem) { playbackService.removeFromLibrary(item) }
     /// Pauses playback after the given number of minutes; nil turns it off.
     func setSleepTimer(minutes: Int?) { playbackService.setSleepTimer(minutes: minutes) }
 

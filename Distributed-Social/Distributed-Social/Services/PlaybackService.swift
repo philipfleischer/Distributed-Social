@@ -528,6 +528,43 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         }
     }
 
+    /// Detaches an item that is about to be deleted from the library:
+    /// purges it from the queues and, if it is the current song, advances
+    /// to whatever would play next — or stops and clears playback so no
+    /// view keeps referencing the deleted model.
+    func removeFromLibrary(_ item: MediaItem) {
+        manualQueue.removeAll { $0.id == item.id }
+        originalQueue.removeAll { $0.id == item.id }
+        if let index = contextQueue.firstIndex(where: { $0.id == item.id }) {
+            contextQueue.remove(at: index)
+            if index < currentIndex { currentIndex -= 1 }
+        }
+
+        if currentItem?.id == item.id {
+            if !manualQueue.isEmpty {
+                playNextManualItem(autoPlay: isPlaying)
+            } else if currentIndex < contextQueue.count {
+                // The removal shifted the next song into currentIndex.
+                loadItem(at: currentIndex, autoPlay: isPlaying)
+            } else {
+                clearPlayback()
+            }
+        }
+        refreshQueues()
+    }
+
+    /// Stops playback entirely and hides the players (mini player shows
+    /// only while currentItem is set).
+    private func clearPlayback() {
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        currentItem = nil
+        isPlaying = false
+        currentTime = 0
+        duration = 0
+        updateNowPlayingInfo()
+    }
+
     // MARK: - Private helpers
 
     /// Loads a context item by index (leaves the manual queue untouched).
