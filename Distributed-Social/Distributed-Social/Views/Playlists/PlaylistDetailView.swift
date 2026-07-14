@@ -32,7 +32,8 @@ struct PlaylistDetailView: View {
     }
 
     private var totalDuration: TimeInterval {
-        sortedItems.compactMap { $0.mediaItem?.duration }.reduce(0, +)
+        // Summing doesn't need the sorted order — skip the sort.
+        (playlist.orderedItems ?? []).compactMap { $0.mediaItem?.duration }.reduce(0, +)
     }
 
     var body: some View {

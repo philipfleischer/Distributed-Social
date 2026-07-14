@@ -85,7 +85,9 @@ struct PlaylistTileView: View {
                 .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
 
             MarqueeText(text: playlist.name, font: .headline, color: theme.textPrimary)
-            Text("\(playlist.sortedItems.count) item\(playlist.sortedItems.count == 1 ? "" : "s")")
+            // Counting doesn't need the sorted order — skip the sort.
+            let count = playlist.orderedItems?.count ?? 0
+            Text("\(count) item\(count == 1 ? "" : "s")")
                 .font(.subheadline)
                 .foregroundStyle(theme.textSecondary)
         }

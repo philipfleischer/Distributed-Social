@@ -64,6 +64,9 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
     override init() {
         super.init()
+        // Everything we play is a local file — skip the streaming-oriented
+        // buffering heuristics so tracks start instantly.
+        player.automaticallyWaitsToMinimizeStalling = false
         configureAudioSession()
         addTimeObserver()
         addEndObserver()
