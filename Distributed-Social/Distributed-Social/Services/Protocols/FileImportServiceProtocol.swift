@@ -16,4 +16,6 @@ protocol FileImportServiceProtocol {
     func deleteFile(_ item: MediaItem) throws
     /// One-time upgrade of pre-tag imports (embedded title/artist/cover art).
     func backfillMetadataIfNeeded(in context: ModelContext) async
+    /// One-time downscale of full-size artwork stored by older imports.
+    func downscaleArtworkIfNeeded(in context: ModelContext) async
 }

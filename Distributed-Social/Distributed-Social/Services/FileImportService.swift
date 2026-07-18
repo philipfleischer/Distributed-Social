@@ -9,11 +9,14 @@ import SwiftData
 
 enum FileImportError: LocalizedError {
     case noMediaFiles
+    case duplicate
 
     var errorDescription: String? {
         switch self {
         case .noMediaFiles:
             return "No media files were found in the selected folder."
+        case .duplicate:
+            return "This file is already in your library."
         }
     }
 }
@@ -30,6 +33,10 @@ final class FileImportService: FileImportServiceProtocol {
     func importFile(from sourceURL: URL) async throws -> MediaItem {
         let accessed = sourceURL.startAccessingSecurityScopedResource()
         defer { if accessed { sourceURL.stopAccessingSecurityScopedResource() } }
+
+        if isDuplicateOfExistingImport(sourceURL) {
+            throw FileImportError.duplicate
+        }
 
         // Unique filename prevents collisions on duplicate names.
         let uniqueFilename = "\(UUID().uuidString)-\(sourceURL.lastPathComponent)"
@@ -54,8 +61,37 @@ final class FileImportService: FileImportServiceProtocol {
             mediaType: mediaType,
             duration: duration,
             artist: tags.artist,
-            artworkData: tags.artwork
+            artworkData: await displaySizedArtwork(tags.artwork)
         )
+    }
+
+    /// A file with the same original name and byte size as an existing
+    /// import is the same song — importing it again would only duplicate the
+    /// library entry (playlists all reference the single existing entry).
+    /// Every import lives in Documents/Media as "<UUID>-<originalName>",
+    /// so the original name is everything after the 37-char UUID prefix.
+    private func isDuplicateOfExistingImport(_ sourceURL: URL) -> Bool {
+        guard let sourceSize = try? sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        else { return false }
+        let name = sourceURL.lastPathComponent
+        let existing = (try? FileManager.default.contentsOfDirectory(
+            at: mediaDirectory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        return existing.contains { url in
+            url.lastPathComponent.count > 37
+                && url.lastPathComponent.dropFirst(37) == name
+                && (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) == sourceSize
+        }
+    }
+
+    /// Embedded cover art is often much larger than it ever renders (the
+    /// biggest display is the full player at 330 pt ≈ 990 px @3x), so store
+    /// a display-sized JPEG instead of the original blob. Falls back to the
+    /// original when decoding fails or re-encoding doesn't shrink it.
+    private func displaySizedArtwork(_ data: Data?) async -> Data? {
+        guard let data else { return nil }
+        guard let scaled = await ArtworkThumbnailCache.downscaledCoverData(from: data),
+              scaled.count < data.count else { return data }
+        return scaled
     }
 
     func importFolder(from folderURL: URL,
@@ -102,7 +138,25 @@ final class FileImportService: FileImportServiceProtocol {
             let tags = await loadEmbeddedTags(from: asset)
             if let title = tags.title { item.displayName = title }
             item.artist = tags.artist
-            item.artworkData = tags.artwork
+            item.artworkData = await displaySizedArtwork(tags.artwork)
+        }
+        UserDefaults.standard.set(true, forKey: key)
+    }
+
+    /// One-time downscale of artwork that older imports stored at full
+    /// size — shrinks the database and speeds up first decode. Tracked in
+    /// UserDefaults so it only ever runs once.
+    func downscaleArtworkIfNeeded(in context: ModelContext) async {
+        let key = "artworkDownscaleDone.v1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+
+        let items = (try? context.fetch(FetchDescriptor<MediaItem>())) ?? []
+        for item in items {
+            guard let data = item.artworkData else { continue }
+            if let scaled = await ArtworkThumbnailCache.downscaledCoverData(from: data),
+               scaled.count < data.count {
+                item.artworkData = scaled
+            }
         }
         UserDefaults.standard.set(true, forKey: key)
     }

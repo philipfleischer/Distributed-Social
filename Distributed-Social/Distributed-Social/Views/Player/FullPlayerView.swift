@@ -4,7 +4,9 @@
 //
 //  Full-screen overlay above the TabView (covers the tab bar). Dismiss via
 //  the chevron or by swiping down. Swiping horizontally slides the whole
-//  song card (cover, title, artist) carousel-style into the neighbor song.
+//  song card (cover, title, artist) carousel-style into the neighbor song —
+//  but only when the drag starts on the card itself, so drags near the
+//  scrubber and controls can't change tracks by accident.
 //
 
 import SwiftUI
@@ -12,6 +14,7 @@ import SwiftUI
 struct FullPlayerView: View {
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var mediaLibraryService: MediaLibraryService
     @EnvironmentObject var themeStore: ThemeStore
     @State private var itemForPlaylist: MediaItem?
@@ -58,6 +61,10 @@ struct FullPlayerView: View {
                 }
                 .frame(height: 430)
                 .clipped()
+                // Track-change swipes only start inside the song card (cover
+                // + title/artist); everywhere else only pull-down works.
+                .contentShape(Rectangle())
+                .gesture(playerGesture)
             }
 
             PlayerControlsView()
@@ -72,8 +79,21 @@ struct FullPlayerView: View {
                 .ignoresSafeArea()
         )
         .offset(y: max(0, dragOffset))
-        .gesture(playerGesture)
+        .gesture(dismissGesture)
         .animation(.spring(duration: 0.3), value: dragOffset)
+        .onChange(of: playerVM.currentItem?.id) { _, _ in
+            // Track changed (next button, song ended, lock screen…): any
+            // leftover carousel offset — e.g. from a drag the system
+            // cancelled without onEnded — would show the new cover
+            // off-center with the neighbor card peeking in.
+            resetSwipeOffset()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // The app-switcher gesture (bottom-edge swipe) starts as a drag
+            // in the app, then the system steals it without onEnded — the
+            // app resigns active at that moment, so reset here.
+            if phase != .active { resetSwipeOffset() }
+        }
         .sheet(item: $itemForPlaylist) { item in
             AddToPlaylistSheet(item: item)
         }
@@ -113,6 +133,24 @@ struct FullPlayerView: View {
 
     // MARK: - Gestures
 
+    /// Pull-down-to-dismiss for everywhere outside the song card. Horizontal
+    /// movement is deliberately ignored so a drag near the scrubber can
+    /// never switch tracks.
+    private var dismissGesture: some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { value in
+                if abs(value.translation.height) > abs(value.translation.width) {
+                    dragOffset = value.translation.height
+                }
+            }
+            .onEnded { value in
+                if value.translation.height > 90 {
+                    playerVM.isFullPlayerPresented = false
+                }
+                dragOffset = 0
+            }
+    }
+
     /// Vertical pull dismisses; horizontal drag slides the song carousel.
     private var playerGesture: some Gesture {
         DragGesture(minimumDistance: 15)
@@ -139,11 +177,26 @@ struct FullPlayerView: View {
                     } else {
                         withAnimation(.spring(duration: 0.25)) { swipeOffset = 0 }
                     }
-                } else if vertical > 90 {
-                    playerVM.isFullPlayerPresented = false
+                } else {
+                    if vertical > 90 {
+                        playerVM.isFullPlayerPresented = false
+                    }
+                    // A mixed drag can set swipeOffset before turning
+                    // vertical — clear it or the card sticks off-center.
+                    withAnimation(.spring(duration: 0.25)) { swipeOffset = 0 }
                 }
                 dragOffset = 0
             }
+    }
+
+    /// Snaps the carousel back to center without animating.
+    private func resetSwipeOffset() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            swipeOffset = 0
+            dragOffset = 0
+        }
     }
 
     /// Deletes the playing song: playback advances to the next track (or

@@ -10,6 +10,7 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @Environment(PlayerViewModel.self) private var playerVM
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject var themeStore: ThemeStore
     @State private var swipeOffset: CGFloat = 0
 
@@ -44,6 +45,16 @@ struct MiniPlayerView: View {
         .padding(.horizontal, 8)
         .shadow(color: theme.textPrimary.opacity(0.25), radius: 6, y: 2)
         .onTapGesture { playerVM.isFullPlayerPresented = true }
+        .onChange(of: playerVM.currentItem?.id) { _, _ in
+            // Same safety net as the full player: a cancelled drag can leak
+            // a stale offset that misaligns the row on the next track change.
+            resetSwipeOffset()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // The app-switcher gesture steals in-flight drags without
+            // onEnded; the app resigns active at that moment — reset here.
+            if phase != .active { resetSwipeOffset() }
+        }
     }
 
     private func row(for item: MediaItem) -> some View {
@@ -101,6 +112,13 @@ struct MiniPlayerView: View {
                     withAnimation(.spring(duration: 0.25)) { swipeOffset = 0 }
                 }
             }
+    }
+
+    /// Snaps the carousel back to center without animating.
+    private func resetSwipeOffset() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { swipeOffset = 0 }
     }
 
     private func commitSwipe(to target: CGFloat, change: @escaping () -> Void) {

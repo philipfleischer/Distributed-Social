@@ -11,4 +11,6 @@ protocol MediaLibraryServiceProtocol: AnyObject {
     func createPlaylist(name: String, mediaType: MediaType, in context: ModelContext) -> Playlist
     func addItem(_ item: MediaItem, toPlaylist playlist: Playlist, in context: ModelContext)
     func deleteMediaItem(_ item: MediaItem, in context: ModelContext)
+    /// Removes playlist rows whose song was deleted before deletes cascaded.
+    func cleanUpOrphanedPlaylistItems(in context: ModelContext)
 }

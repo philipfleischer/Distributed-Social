@@ -17,14 +17,10 @@ struct PlaylistDetailView: View {
 
     private var theme: AppTheme { themeStore.theme }
 
-    private var sortedItems: [PlaylistItem] {
-        playlist.sortedItems
-    }
-
     /// Rows matching the in-playlist search (all rows when not searching).
-    private var visibleItems: [PlaylistItem] {
-        guard !searchText.isEmpty else { return sortedItems }
-        return sortedItems.filter { pi in
+    private func visibleItems(in sorted: [PlaylistItem]) -> [PlaylistItem] {
+        guard !searchText.isEmpty else { return sorted }
+        return sorted.filter { pi in
             guard let item = pi.mediaItem else { return false }
             return item.displayName.localizedCaseInsensitiveContains(searchText)
                 || (item.artist?.localizedCaseInsensitiveContains(searchText) ?? false)
@@ -37,6 +33,11 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
+        // One sort per render — the list, header, and toolbar all need the
+        // ordered rows, and sorting in each computed property re-sorted the
+        // playlist several times per body pass.
+        let sortedItems = playlist.sortedItems
+        let visibleItems = visibleItems(in: sortedItems)
         List {
             if sortedItems.isEmpty {
                 ContentUnavailableView(
@@ -153,9 +154,10 @@ struct PlaylistDetailView: View {
 
     // MARK: - Helpers
 
-    /// Songs in playlist order whose files still exist.
+    /// Songs in playlist order whose files still exist. Only evaluated on
+    /// tap events, so the sort here doesn't run during rendering.
     private var playableQueue: [MediaItem] {
-        sortedItems.compactMap { $0.mediaItem }.filter { !$0.isFileMissing }
+        playlist.sortedItems.compactMap { $0.mediaItem }.filter { !$0.isFileMissing }
     }
 
     /// The toolbar Play button resumes from the last played song when the
@@ -181,12 +183,16 @@ struct PlaylistDetailView: View {
     private func registerPlay(of item: MediaItem) {
         playlist.lastPlayedItemId = item.id
         playlist.lastPlayedDate = Date()
-        playlist.playCount += 1
+        // Count once per listening session — tapping between songs of the
+        // already-playing playlist shouldn't inflate its popularity.
+        if playerVM.currentPlaylistID != playlist.id {
+            playlist.playCount += 1
+        }
         playerVM.currentPlaylistID = playlist.id
     }
 
     private func moveItems(from: IndexSet, to: Int) {
-        var items = sortedItems
+        var items = playlist.sortedItems
         items.move(fromOffsets: from, toOffset: to)
         for (index, pi) in items.enumerated() {
             pi.sortOrder = index

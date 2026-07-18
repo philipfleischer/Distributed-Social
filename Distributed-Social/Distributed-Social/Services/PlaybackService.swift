@@ -19,6 +19,16 @@ import MediaPlayer
 import Observation
 import UIKit
 
+/// A queue slot with its own identity: the same song can sit in a queue
+/// twice (e.g. "Add to Queue" tapped twice), so list rows can't be
+/// identified by the MediaItem's id without confusing reorder/remove.
+struct QueueEntry: Identifiable, Equatable {
+    let id = UUID()
+    let item: MediaItem
+
+    static func == (lhs: QueueEntry, rhs: QueueEntry) -> Bool { lhs.id == rhs.id }
+}
+
 // @Observable (not ObservableObject): views re-render only when a property
 // they actually read changes, instead of on every published change — e.g.
 // the queue updates on each track change no longer re-render Home.
@@ -33,9 +43,9 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     private(set) var isShuffleEnabled: Bool = false
     private(set) var repeatMode: RepeatMode = .off
     /// Songs the user queued manually (FIFO) — play before the context resumes.
-    private(set) var queuedItems: [MediaItem] = []
+    private(set) var queuedItems: [QueueEntry] = []
     /// Songs that come next naturally from the current context.
-    private(set) var upNext: [MediaItem] = []
+    private(set) var upNext: [QueueEntry] = []
     /// When set, playback pauses automatically at this time.
     private(set) var sleepTimerEnd: Date?
 
@@ -49,11 +59,14 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
 
-    private var originalQueue: [MediaItem] = []   // unshuffled context order
-    private var contextQueue: [MediaItem] = []    // active context order
+    private var originalQueue: [QueueEntry] = []  // unshuffled context order
+    private var contextQueue: [QueueEntry] = []   // active context order
     private var currentIndex: Int = 0             // position in contextQueue
-    private var manualQueue: [MediaItem] = []     // user-queued FIFO
+    private var manualQueue: [QueueEntry] = []    // user-queued FIFO
     private var isPlayingFromManualQueue = false
+    /// Entry identity of the playing slot — survives shuffle re-ordering
+    /// even when the same song appears twice in the context.
+    private var currentEntryID: UUID?
     /// Tracks whether `.one` repeat has already replayed the current track,
     /// so each song plays exactly twice before advancing.
     private var hasRepeatedCurrentItem = false
@@ -295,10 +308,10 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     // MARK: - Protocol implementation
 
     func play(item: MediaItem, in queue: [MediaItem], startAt position: TimeInterval = 0) {
-        originalQueue = queue
-        contextQueue = isShuffleEnabled ? queue.shuffled() : queue
+        originalQueue = queue.map { QueueEntry(item: $0) }
+        contextQueue = isShuffleEnabled ? originalQueue.shuffled() : originalQueue
 
-        if let index = contextQueue.firstIndex(where: { $0.id == item.id }) {
+        if let index = contextQueue.firstIndex(where: { $0.item.id == item.id }) {
             currentIndex = index
         } else {
             currentIndex = 0
@@ -360,16 +373,16 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
     /// The song a "next" action would play right now (manual queue first).
     var peekNext: MediaItem? {
-        if let queued = manualQueue.first { return queued }
+        if let queued = manualQueue.first { return queued.item }
         guard !contextQueue.isEmpty else { return nil }
-        return contextQueue[(currentIndex + 1) % contextQueue.count]
+        return contextQueue[(currentIndex + 1) % contextQueue.count].item
     }
 
     /// The song a swipe-to-previous would play right now.
     var peekPrevious: MediaItem? {
         guard !contextQueue.isEmpty else { return nil }
-        if isPlayingFromManualQueue { return contextQueue[currentIndex] }
-        return contextQueue[currentIndex == 0 ? contextQueue.count - 1 : currentIndex - 1]
+        if isPlayingFromManualQueue { return contextQueue[currentIndex].item }
+        return contextQueue[currentIndex == 0 ? contextQueue.count - 1 : currentIndex - 1].item
     }
 
     func seek(to position: TimeInterval) {
@@ -387,13 +400,8 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
     func toggleShuffle() {
         isShuffleEnabled.toggle()
-        let currentItemId = currentItem?.id
-        if isShuffleEnabled {
-            contextQueue = originalQueue.shuffled()
-        } else {
-            contextQueue = originalQueue
-        }
-        if let id = currentItemId,
+        contextQueue = isShuffleEnabled ? originalQueue.shuffled() : originalQueue
+        if let id = currentEntryID,
            let newIndex = contextQueue.firstIndex(where: { $0.id == id }) {
             currentIndex = newIndex
         }
@@ -443,6 +451,14 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
     func saveCurrentPosition() {
         guard let item = currentItem else { return }
+        // Only long content resumes (mixes, audiobooks, podcasts) — regular
+        // songs always restart. A listen shorter than a few seconds isn't a
+        // resume point either.
+        guard item.duration >= Constants.Playback.minDurationToResume,
+              currentTime >= Constants.Playback.minPositionToSave else {
+            item.lastPosition = 0
+            return
+        }
         // A track sitting within a second of its end is finished — store 0
         // so it starts over next time instead of resuming at the very end.
         item.lastPosition = currentTime >= max(0, duration - 1) ? 0 : currentTime
@@ -456,7 +472,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
             play(item: item, in: [item], startAt: 0)
             return
         }
-        manualQueue.insert(item, at: 0)
+        manualQueue.insert(QueueEntry(item: item), at: 0)
         refreshQueues()
     }
 
@@ -466,17 +482,17 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
             play(item: item, in: [item], startAt: 0)
             return
         }
-        manualQueue.append(item)
+        manualQueue.append(QueueEntry(item: item))
         refreshQueues()
     }
 
-    /// Jumps playback to a song in either queue section. Tapping a manually
-    /// queued song drops the entries queued before it (Spotify behavior).
-    func jump(to item: MediaItem) {
-        if let index = manualQueue.firstIndex(where: { $0.id == item.id }) {
+    /// Jumps playback to a queue entry in either section. Tapping a manually
+    /// queued entry drops the entries queued before it (Spotify behavior).
+    func jump(to entry: QueueEntry) {
+        if let index = manualQueue.firstIndex(where: { $0.id == entry.id }) {
             manualQueue.removeFirst(index)
             playNextManualItem(autoPlay: true)
-        } else if let index = contextQueue.firstIndex(where: { $0.id == item.id }) {
+        } else if let index = contextQueue.firstIndex(where: { $0.id == entry.id }) {
             isPlayingFromManualQueue = false
             loadItem(at: index, autoPlay: true)
         }
@@ -510,9 +526,15 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         refreshQueues()
     }
 
+    /// Empties the manual queue (the "In Queue" section of the queue sheet).
+    func clearManualQueue() {
+        manualQueue.removeAll()
+        refreshQueues()
+    }
+
     /// Manual reorder (the move(fromOffsets:toOffset:) helper is SwiftUI-only,
     /// which this service intentionally does not import).
-    private func reorder(_ items: inout [MediaItem], fromOffsets: IndexSet, toOffset: Int) {
+    private func reorder(_ items: inout [QueueEntry], fromOffsets: IndexSet, toOffset: Int) {
         let moving = fromOffsets.sorted().map { items[$0] }
         let adjustedTarget = toOffset - fromOffsets.count(where: { $0 < toOffset })
         for index in fromOffsets.sorted(by: >) { items.remove(at: index) }
@@ -533,9 +555,9 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     /// to whatever would play next — or stops and clears playback so no
     /// view keeps referencing the deleted model.
     func removeFromLibrary(_ item: MediaItem) {
-        manualQueue.removeAll { $0.id == item.id }
-        originalQueue.removeAll { $0.id == item.id }
-        if let index = contextQueue.firstIndex(where: { $0.id == item.id }) {
+        manualQueue.removeAll { $0.item.id == item.id }
+        originalQueue.removeAll { $0.item.id == item.id }
+        while let index = contextQueue.firstIndex(where: { $0.item.id == item.id }) {
             contextQueue.remove(at: index)
             if index < currentIndex { currentIndex -= 1 }
         }
@@ -559,6 +581,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         player.pause()
         player.replaceCurrentItem(with: nil)
         currentItem = nil
+        currentEntryID = nil
         isPlaying = false
         currentTime = 0
         duration = 0
@@ -572,16 +595,18 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         guard index < contextQueue.count else { return }
         currentIndex = index
         isPlayingFromManualQueue = false
-        loadMedia(contextQueue[index], autoPlay: autoPlay, startAt: position)
+        currentEntryID = contextQueue[index].id
+        loadMedia(contextQueue[index].item, autoPlay: autoPlay, startAt: position)
     }
 
     /// Pops and plays the front of the manual queue without moving the
     /// context position, so the context resumes correctly afterwards.
     private func playNextManualItem(autoPlay: Bool) {
         guard !manualQueue.isEmpty else { return }
-        let item = manualQueue.removeFirst()
+        let entry = manualQueue.removeFirst()
         isPlayingFromManualQueue = true
-        loadMedia(item, autoPlay: autoPlay, startAt: 0)
+        currentEntryID = entry.id
+        loadMedia(entry.item, autoPlay: autoPlay, startAt: 0)
     }
 
     private func loadMedia(_ item: MediaItem, autoPlay: Bool, startAt position: TimeInterval) {
@@ -601,7 +626,6 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
         currentItem = item
         hasRepeatedCurrentItem = false
-        if autoPlay { item.playCount += 1 }
 
         // Reset published time state immediately so the scrubber snaps to the
         // start of the new track instead of holding the previous position
@@ -617,13 +641,17 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
             player.seek(to: time)
         }
 
-        // Load the real duration asynchronously.
-        Task { [weak self] in
-            if let cmDuration = try? await playerItem.asset.load(.duration) {
-                await MainActor.run {
-                    self?.duration = cmDuration.seconds.isNaN ? 0 : cmDuration.seconds
-                    self?.updateNowPlayingInfo()
-                }
+        // The duration was probed and stored at import — only parse the
+        // asset when the stored value is missing (pre-import-probe items),
+        // and write it back so the probe never runs again for this item.
+        if item.duration <= 0 {
+            Task { [weak self] in
+                guard let cmDuration = try? await playerItem.asset.load(.duration),
+                      let self, self.currentItem?.id == item.id else { return }
+                let seconds = cmDuration.seconds.isNaN ? 0 : cmDuration.seconds
+                self.duration = seconds
+                item.duration = seconds
+                self.updateNowPlayingInfo()
             }
         }
 
