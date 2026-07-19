@@ -29,18 +29,25 @@ struct QueueSheet: View {
                 } else {
                     List {
                         if !playerVM.queuedItems.isEmpty {
-                            Section("In Queue") {
-                                ForEach(playerVM.queuedItems) { item in
-                                    queueRow(for: item)
+                            Section {
+                                ForEach(playerVM.queuedItems) { entry in
+                                    queueRow(for: entry)
                                 }
                                 .onDelete { playerVM.removeFromQueued(at: $0) }
                                 .onMove { playerVM.moveQueued(fromOffsets: $0, toOffset: $1) }
+                            } header: {
+                                HStack {
+                                    Text("In Queue")
+                                    Spacer()
+                                    Button("Clear") { playerVM.clearQueue() }
+                                        .font(.caption.weight(.semibold))
+                                }
                             }
                         }
                         if !playerVM.upNext.isEmpty {
                             Section("Next Up") {
-                                ForEach(playerVM.upNext) { item in
-                                    queueRow(for: item)
+                                ForEach(playerVM.upNext) { entry in
+                                    queueRow(for: entry)
                                 }
                                 .onDelete { playerVM.removeFromUpNext(at: $0) }
                                 .onMove { playerVM.moveUpNext(fromOffsets: $0, toOffset: $1) }
@@ -67,8 +74,9 @@ struct QueueSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func queueRow(for item: MediaItem) -> some View {
-        HStack(spacing: 12) {
+    private func queueRow(for entry: QueueEntry) -> some View {
+        let item = entry.item
+        return HStack(spacing: 12) {
             MediaArtworkView(item: item, size: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
@@ -89,7 +97,7 @@ struct QueueSheet: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            playerVM.jump(to: item)
+            playerVM.jump(to: entry)
         }
         .listRowBackground(Color.clear)
     }

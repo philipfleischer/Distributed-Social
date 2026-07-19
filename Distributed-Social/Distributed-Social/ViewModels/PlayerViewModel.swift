@@ -34,9 +34,9 @@ final class PlayerViewModel {
     var isShuffleEnabled: Bool { playbackService.isShuffleEnabled }
     var repeatMode: RepeatMode { playbackService.repeatMode }
     /// Manually queued songs (FIFO) — play before the context resumes.
-    var queuedItems: [MediaItem] { playbackService.queuedItems }
+    var queuedItems: [QueueEntry] { playbackService.queuedItems }
     /// Songs that come next naturally from the current context.
-    var upNext: [MediaItem] { playbackService.upNext }
+    var upNext: [QueueEntry] { playbackService.upNext }
     /// When set, playback pauses automatically at this time.
     var sleepTimerEnd: Date? { playbackService.sleepTimerEnd }
 
@@ -84,7 +84,8 @@ final class PlayerViewModel {
             if !Task.isCancelled { self?.toast = nil }
         }
     }
-    func jump(to item: MediaItem) { playbackService.jump(to: item) }
+    func jump(to entry: QueueEntry) { playbackService.jump(to: entry) }
+    func clearQueue() { playbackService.clearManualQueue() }
     func removeFromUpNext(at offsets: IndexSet) { playbackService.removeFromUpNext(at: offsets) }
     func moveUpNext(fromOffsets: IndexSet, toOffset: Int) {
         playbackService.moveUpNext(fromOffsets: fromOffsets, toOffset: toOffset)
@@ -95,7 +96,11 @@ final class PlayerViewModel {
     }
 
     func play(item: MediaItem, in queue: [MediaItem]) {
-        playbackService.play(item: item, in: queue, startAt: item.lastPosition)
+        // Only long content resumes; also ignores positions saved on short
+        // tracks before the duration threshold existed.
+        let resumeAt = item.duration >= Constants.Playback.minDurationToResume
+            ? item.lastPosition : 0
+        playbackService.play(item: item, in: queue, startAt: resumeAt)
         isFullPlayerPresented = true
     }
 }

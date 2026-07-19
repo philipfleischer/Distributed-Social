@@ -12,6 +12,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(PlayerViewModel.self) private var playerVM
+    @EnvironmentObject var mediaLibraryService: MediaLibraryService
     let fileImportService: FileImportServiceProtocol
     @State private var selectedTab = 0
 
@@ -67,9 +68,14 @@ struct ContentView: View {
         }
         .animation(.spring(duration: 0.3), value: playerVM.toast)
         .task {
+            // Deletes used to leave orphaned playlist rows behind — sweep
+            // any that remain from before the cascade existed.
+            mediaLibraryService.cleanUpOrphanedPlaylistItems(in: modelContext)
             // Old imports predate tag extraction — fill in their embedded
             // title/artist/cover art once.
             await fileImportService.backfillMetadataIfNeeded(in: modelContext)
+            // Artwork stored full-size by older imports is downscaled once.
+            await fileImportService.downscaleArtworkIfNeeded(in: modelContext)
         }
     }
 }

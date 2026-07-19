@@ -36,7 +36,7 @@ struct PlaybackQueueTests {
         service.play(item: songs[0], in: songs, startAt: 0)
 
         #expect(service.currentItem?.id == songs[0].id)
-        #expect(service.upNext.map(\.id) == [songs[1].id, songs[2].id])
+        #expect(service.upNext.map(\.item.id) == [songs[1].id, songs[2].id])
         #expect(service.queuedItems.isEmpty)
     }
 
@@ -53,9 +53,9 @@ struct PlaybackQueueTests {
         service.addToQueue(extra2)
         service.playNext(front)
 
-        #expect(service.queuedItems.map(\.displayName) == ["Front", "Q1", "Q2"])
+        #expect(service.queuedItems.map(\.item.displayName) == ["Front", "Q1", "Q2"])
         // The context section is untouched by manual queueing.
-        #expect(service.upNext.map(\.id) == [songs[1].id])
+        #expect(service.upNext.map(\.item.id) == [songs[1].id])
     }
 
     @Test("Next drains the manual queue before the context resumes")
@@ -87,7 +87,7 @@ struct PlaybackQueueTests {
         #expect(service.peekNext?.id == queued.id)
     }
 
-    @Test("Jumping to a queued song drops the entries before it")
+    @Test("Jumping to a queued entry drops the entries before it")
     func jumpDropsEarlierQueued() {
         let service = PlaybackService()
         let songs = makeQueue(["A"])
@@ -95,9 +95,40 @@ struct PlaybackQueueTests {
         service.play(item: songs[0], in: songs, startAt: 0)
         q.forEach { service.addToQueue($0) }
 
-        service.jump(to: q[2])
+        service.jump(to: service.queuedItems[2])
         #expect(service.currentItem?.id == q[2].id)
         #expect(service.queuedItems.isEmpty)
+    }
+
+    @Test("Queueing the same song twice creates distinct entries")
+    func duplicateQueueEntries() {
+        let service = PlaybackService()
+        let songs = makeQueue(["A"])
+        let dup = makeItem("Dup")
+        service.play(item: songs[0], in: songs, startAt: 0)
+        service.addToQueue(dup)
+        service.addToQueue(dup)
+
+        #expect(service.queuedItems.count == 2)
+        // Same song, but each queue slot keeps its own identity.
+        #expect(service.queuedItems[0].id != service.queuedItems[1].id)
+
+        // Removing one slot leaves the other in place.
+        service.removeFromQueued(at: IndexSet(integer: 0))
+        #expect(service.queuedItems.map(\.item.displayName) == ["Dup"])
+    }
+
+    @Test("Clearing the manual queue empties only the In Queue section")
+    func clearManualQueue() {
+        let service = PlaybackService()
+        let songs = makeQueue(["A", "B"])
+        service.play(item: songs[0], in: songs, startAt: 0)
+        service.addToQueue(makeItem("Q1"))
+        service.addToQueue(makeItem("Q2"))
+
+        service.clearManualQueue()
+        #expect(service.queuedItems.isEmpty)
+        #expect(service.upNext.map(\.item.id) == [songs[1].id])
     }
 
     @Test("Reordering and removing within Up Next")
@@ -108,19 +139,10 @@ struct PlaybackQueueTests {
 
         // Move "B" (offset 0) below "C" → B ends up after C.
         service.moveUpNext(fromOffsets: IndexSet(integer: 0), toOffset: 2)
-        #expect(service.upNext.map(\.displayName) == ["C", "B", "D"])
+        #expect(service.upNext.map(\.item.displayName) == ["C", "B", "D"])
 
         service.removeFromUpNext(at: IndexSet(integer: 1))
-        #expect(service.upNext.map(\.displayName) == ["C", "D"])
-    }
-
-    @Test("Playback of an item increments its play count")
-    func playCountIncrements() {
-        let service = PlaybackService()
-        let songs = makeQueue(["A"])
-        #expect(songs[0].playCount == 0)
-        service.play(item: songs[0], in: songs, startAt: 0)
-        #expect(songs[0].playCount == 1)
+        #expect(service.upNext.map(\.item.displayName) == ["C", "D"])
     }
 
     @Test("Missing files are not loaded")

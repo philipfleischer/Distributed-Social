@@ -53,11 +53,6 @@ struct VideoRowView<MenuContent: View>: View {
                         Text(item.duration.formattedTime)
                             .font(.subheadline)
                             .foregroundStyle(theme.textSecondary)
-                        if item.playCount > 0 {
-                            Text("· \(item.playCount) play\(item.playCount == 1 ? "" : "s")")
-                                .font(.subheadline)
-                                .foregroundStyle(theme.textSecondary)
-                        }
                     }
                 }
             }
