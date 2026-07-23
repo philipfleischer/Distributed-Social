@@ -7,25 +7,17 @@
 //
 
 import SwiftUI
-import Combine
+import Observation
 
 // MARK: - Base palette (used by artwork tiles and the default theme)
 
 extension Color {
-    /// Sky blue — accent of the classic theme (matches the AccentColor asset).
     static let skyBlue = Color(red: 0.486, green: 0.773, blue: 0.910)
-    /// A slightly deeper sky blue.
     static let deepSky = Color(red: 0.243, green: 0.565, blue: 0.722)
-    /// Sakura (cherry blossom) pink.
     static let sakuraPink = Color(red: 1.0, green: 0.718, blue: 0.773)
-    /// A softer, near-white background tint.
     static let softWhite = Color(red: 0.980, green: 0.992, blue: 1.0)
-    /// Dimmed light blue (legacy secondary text; themed views use
-    /// `AppTheme.textSecondary` instead).
     static let inkSecondary = Color.skyBlue.opacity(0.62)
 
-    /// Deterministic pastel hue derived from a UUID, so every media item
-    /// gets its own stable artwork color across launches.
     static func artworkHue(for id: UUID, offset: Double = 0) -> Color {
         var seed = 0
         for scalar in id.uuidString.unicodeScalars {
@@ -50,55 +42,50 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .spotify: return "Spotify"
-        case .ember: return "Black & Orange"
-        case .skyNight: return "Black & Sky Blue"
-        case .skyDay: return "Sky Blue & Black"
-        case .sakura: return "Sakura Pink"
+        case .spotify:   return "Spotify"
+        case .ember:     return "Black & Orange"
+        case .skyNight:  return "Black & Sky Blue"
+        case .skyDay:    return "Sky Blue & Black"
+        case .sakura:    return "Sakura Pink"
         case .evergreen: return "White & Green"
         }
     }
 
-    /// Main text / icon / accent color.
     var textPrimary: Color {
         switch self {
-        case .spotify: return Color(red: 0.114, green: 0.725, blue: 0.329) // #1DB954
-        case .ember: return Color(red: 1.0, green: 0.584, blue: 0.0)
-        case .skyNight: return .skyBlue
-        case .skyDay: return .black
-        case .sakura: return .white
+        case .spotify:   return Color(red: 0.114, green: 0.725, blue: 0.329)
+        case .ember:     return Color(red: 1.0, green: 0.584, blue: 0.0)
+        case .skyNight:  return .skyBlue
+        case .skyDay:    return .black
+        case .sakura:    return .white
         case .evergreen: return Color(red: 0.043, green: 0.373, blue: 0.208)
         }
     }
 
-    /// Dimmed variant for secondary text.
     var textSecondary: Color {
         switch self {
         case .sakura: return Color.white.opacity(0.78)
         case .skyDay: return Color.black.opacity(0.60)
-        default: return textPrimary.opacity(0.62)
+        default:      return textPrimary.opacity(0.62)
         }
     }
 
-    /// Color for the currently playing row — must stand out from textPrimary.
     var textHighlight: Color {
         switch self {
-        case .sakura: return .black
+        case .sakura:    return .black
         case .evergreen: return .black
-        case .skyDay: return .deepSky
-        default: return .white
+        case .skyDay:    return .deepSky
+        default:         return .white
         }
     }
 
-    /// Whether system chrome (nav bars, forms, sheets) renders dark or light.
     var colorScheme: ColorScheme {
         switch self {
         case .evergreen, .skyDay: return .light
-        default: return .dark
+        default:                  return .dark
         }
     }
 
-    /// Background gradient colors, top to bottom.
     var backgroundColors: [Color] {
         switch self {
         case .spotify:
@@ -130,15 +117,16 @@ enum AppTheme: String, CaseIterable, Identifiable {
         LinearGradient(colors: backgroundColors, startPoint: .top, endPoint: .bottom)
     }
 
-    /// Fill for small pill controls (e.g. the speed chip).
     var chipFill: Color {
         colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
     }
 }
 
-/// Holds the active theme and persists the selection.
-final class ThemeStore: ObservableObject {
-    @Published var theme: AppTheme {
+// MARK: - ThemeStore (@Observable — only views that read .theme re-render)
+
+@Observable
+final class ThemeStore {
+    var theme: AppTheme {
         didSet { UserDefaults.standard.set(theme.rawValue, forKey: "appTheme") }
     }
 
@@ -150,9 +138,8 @@ final class ThemeStore: ObservableObject {
 
 // MARK: - Background modifier
 
-/// Applies the active theme's full-screen background gradient.
 struct SummerBackground: ViewModifier {
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
 
     func body(content: Content) -> some View {
         content
@@ -161,7 +148,6 @@ struct SummerBackground: ViewModifier {
 }
 
 extension View {
-    /// Applies the app's themed background.
     func summerBackground() -> some View {
         modifier(SummerBackground())
     }

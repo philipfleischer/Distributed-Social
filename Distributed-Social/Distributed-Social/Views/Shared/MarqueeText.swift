@@ -13,6 +13,7 @@ struct MarqueeText: View {
     let text: String
     var font: Font = .headline
     var color: Color = .skyBlue
+    var lineHeight: CGFloat = 22
 
     @State private var textWidth: CGFloat = 0
     @State private var offsetX: CGFloat = 0
@@ -37,7 +38,7 @@ struct MarqueeText: View {
                 .onAppear { startSlidingIfNeeded(containerWidth: geo.size.width) }
                 .onDisappear { stopSliding() }
         }
-        .frame(height: 22)
+        .frame(height: lineHeight)
         .clipped()
     }
 

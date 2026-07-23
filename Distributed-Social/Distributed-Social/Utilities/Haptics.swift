@@ -2,9 +2,6 @@
 //  Haptics.swift
 //  Distributed-Social
 //
-//  Tiny helper for tactile feedback on key interactions (swipe commits,
-//  queueing, favoriting).
-//
 
 import UIKit
 
@@ -15,15 +12,26 @@ enum Haptics {
     private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
     private static let notificationGenerator = UINotificationFeedbackGenerator()
 
+    /// Pre-warms the Taptic Engine at launch so the first haptic fires
+    /// immediately rather than after a ~15 ms cold-start delay.
+    static func prepareAll() {
+        lightGenerator.prepare()
+        mediumGenerator.prepare()
+        notificationGenerator.prepare()
+    }
+
     static func light() {
         lightGenerator.impactOccurred()
+        lightGenerator.prepare() // ready for the next tap
     }
 
     static func medium() {
         mediumGenerator.impactOccurred()
+        mediumGenerator.prepare()
     }
 
     static func success() {
         notificationGenerator.notificationOccurred(.success)
+        notificationGenerator.prepare()
     }
 }

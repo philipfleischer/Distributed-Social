@@ -12,8 +12,8 @@ import SwiftData
 struct AddSongsSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var mediaLibraryService: MediaLibraryService
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(MediaLibraryService.self) private var mediaLibraryService
+    @Environment(ThemeStore.self) private var themeStore
     @Query(sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
 
     let playlist: Playlist

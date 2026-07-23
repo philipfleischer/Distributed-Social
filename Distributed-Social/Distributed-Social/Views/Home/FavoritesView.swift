@@ -10,14 +10,11 @@ import SwiftData
 
 struct FavoritesView: View {
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var themeStore: ThemeStore
-    @Query(sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
+    @Environment(ThemeStore.self) private var themeStore
+    @Query(filter: #Predicate<MediaItem> { $0.isFavorite },
+           sort: \MediaItem.dateImported, order: .reverse) private var favorites: [MediaItem]
 
     private var theme: AppTheme { themeStore.theme }
-
-    private var favorites: [MediaItem] {
-        allItems.filter { $0.isFavorite }
-    }
 
     var body: some View {
         Group {
@@ -76,10 +73,25 @@ struct FavoritesView: View {
                     .listRowBackground(Color.clear)
                 }
                 .scrollContentBackground(.hidden)
-                .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
+                .contentMargins(.bottom, 120, for: .scrollContent)
             }
         }
         .summerBackground()
         .navigationTitle("Favorites")
+        .toolbar {
+            if !favorites.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        let playable = favorites.filter { !$0.isFileMissing }.shuffled()
+                        if let first = playable.first {
+                            playerVM.currentPlaylistID = nil
+                            playerVM.play(item: first, in: playable)
+                        }
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                    }
+                }
+            }
+        }
     }
 }

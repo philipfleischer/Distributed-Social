@@ -13,7 +13,7 @@ struct AudioRowView<MenuContent: View>: View {
     let onPlay: () -> Void
     @ViewBuilder let menuContent: () -> MenuContent
 
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     private var theme: AppTheme { themeStore.theme }
 
     var body: some View {

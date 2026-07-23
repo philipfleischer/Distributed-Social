@@ -37,8 +37,8 @@ final class PlayerViewModel {
     var queuedItems: [QueueEntry] { playbackService.queuedItems }
     /// Songs that come next naturally from the current context.
     var upNext: [QueueEntry] { playbackService.upNext }
-    /// When set, playback pauses automatically at this time.
-    var sleepTimerEnd: Date? { playbackService.sleepTimerEnd }
+    /// Seconds trimmed from the end of each song (0 = off).
+    var songFadeSeconds: Int { playbackService.songFadeSeconds }
 
     /// What a next / previous swipe would play — drives the slide-in previews.
     var nextItem: MediaItem? { playbackService.peekNext }
@@ -72,8 +72,7 @@ final class PlayerViewModel {
     /// Detaches an about-to-be-deleted item from playback (advances past it
     /// or stops) — call before removing it from the library.
     func removeFromPlayback(_ item: MediaItem) { playbackService.removeFromLibrary(item) }
-    /// Pauses playback after the given number of minutes; nil turns it off.
-    func setSleepTimer(minutes: Int?) { playbackService.setSleepTimer(minutes: minutes) }
+    func setSongFade(seconds: Int) { playbackService.setSongFade(seconds: seconds) }
 
     private func showToast(_ message: String) {
         Haptics.success()

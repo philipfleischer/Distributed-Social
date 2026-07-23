@@ -4,14 +4,16 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
-final class VideoLibraryViewModel: ObservableObject {
-    @Published var searchText: String = ""
-    @Published var selectedFolderId: UUID? = nil
+@Observable
+final class VideoLibraryViewModel {
+    var searchText: String = ""
+    var selectedFolderId: UUID? = nil
+    var sortOrder: LibrarySortOrder = .dateImported
 
     func filteredItems(_ all: [MediaItem]) -> [MediaItem] {
-        var items = all.filter { $0.mediaType == .video }
+        var items = all
         if let fid = selectedFolderId {
             items = items.filter { $0.folder?.id == fid }
         }
@@ -20,8 +22,16 @@ final class VideoLibraryViewModel: ObservableObject {
                 $0.displayName.localizedCaseInsensitiveContains(searchText)
             }
         }
-        // The @Query input is already sorted newest-first and filtering
-        // preserves order — no re-sort needed.
+        switch sortOrder {
+        case .dateImported:
+            break // @Query already sorted newest-first
+        case .name:
+            items.sort {
+                $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+            }
+        case .duration:
+            items.sort { $0.duration < $1.duration }
+        }
         return items
     }
 }

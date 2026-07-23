@@ -24,3 +24,28 @@ struct AirPlayButton: UIViewRepresentable {
         uiView.activeTintColor = UIColor(tint)
     }
 }
+
+/// Zero-size UIViewRepresentable that holds an AVRoutePickerView and fires it
+/// when `trigger` flips to true — lets us put "AirPlay" inside a SwiftUI Menu.
+struct AirPlayTriggerView: UIViewRepresentable {
+    @Binding var trigger: Bool
+
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.alpha = 0.001
+        return picker
+    }
+
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        guard trigger else { return }
+        DispatchQueue.main.async {
+            for sub in uiView.subviews {
+                if let btn = sub as? UIButton {
+                    btn.sendActions(for: .touchUpInside)
+                    break
+                }
+            }
+            trigger = false
+        }
+    }
+}

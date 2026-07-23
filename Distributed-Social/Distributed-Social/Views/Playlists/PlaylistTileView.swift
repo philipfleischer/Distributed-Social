@@ -14,7 +14,7 @@ struct PlaylistTileView: View {
     var size: CGFloat? = nil        // nil → flexible (grid) sizing
     var isActive: Bool = false      // true when this playlist is playing
 
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     private var theme: AppTheme { themeStore.theme }
 
     private var seed: Int {
@@ -34,9 +34,11 @@ struct PlaylistTileView: View {
     private static let coverPointSize: CGFloat = 200
 
     /// Custom cover if chosen, otherwise the first available song artwork.
+    /// Uses `orderedItems` (no sort) since we only need the first artwork,
+    /// not a sorted list — avoids an O(n log n) sort on every render.
     private var coverData: Data? {
         if let data = playlist.imageData { return data }
-        return playlist.sortedItems.compactMap { $0.mediaItem?.artworkData }.first
+        return (playlist.orderedItems ?? []).compactMap { $0.mediaItem?.artworkData }.first
     }
 
     /// Identity of whatever the cover shows. Changing the custom image or
@@ -46,7 +48,7 @@ struct PlaylistTileView: View {
         if let data = playlist.imageData {
             return "pl-\(playlist.id.uuidString)-custom-\(data.count)"
         }
-        if let item = playlist.sortedItems.compactMap(\.mediaItem).first(where: { $0.artworkData != nil }) {
+        if let item = (playlist.orderedItems ?? []).compactMap(\.mediaItem).first(where: { $0.artworkData != nil }) {
             return "item-\(item.id.uuidString)"
         }
         return "pl-\(playlist.id.uuidString)-generated"
