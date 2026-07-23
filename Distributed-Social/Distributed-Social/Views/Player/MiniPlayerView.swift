@@ -9,9 +9,11 @@
 import SwiftUI
 
 struct MiniPlayerView: View {
+    let artworkNamespace: Namespace.ID
+
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     @State private var swipeOffset: CGFloat = 0
 
     private var theme: AppTheme { themeStore.theme }
@@ -21,15 +23,15 @@ struct MiniPlayerView: View {
             let width = geo.size.width
             ZStack {
                 if let previous = playerVM.previousItem {
-                    row(for: previous)
+                    row(for: previous, isCurrent: false)
                         .offset(x: swipeOffset - width)
                 }
                 if let current = playerVM.currentItem {
-                    row(for: current)
+                    row(for: current, isCurrent: true)
                         .offset(x: swipeOffset)
                 }
                 if let next = playerVM.nextItem {
-                    row(for: next)
+                    row(for: next, isCurrent: false)
                         .offset(x: swipeOffset + width)
                 }
             }
@@ -46,20 +48,21 @@ struct MiniPlayerView: View {
         .shadow(color: theme.textPrimary.opacity(0.25), radius: 6, y: 2)
         .onTapGesture { playerVM.isFullPlayerPresented = true }
         .onChange(of: playerVM.currentItem?.id) { _, _ in
-            // Same safety net as the full player: a cancelled drag can leak
-            // a stale offset that misaligns the row on the next track change.
             resetSwipeOffset()
         }
         .onChange(of: scenePhase) { _, phase in
-            // The app-switcher gesture steals in-flight drags without
-            // onEnded; the app resigns active at that moment — reset here.
             if phase != .active { resetSwipeOffset() }
         }
     }
 
-    private func row(for item: MediaItem) -> some View {
+    private func row(for item: MediaItem, isCurrent: Bool) -> some View {
         HStack(spacing: 14) {
-            MediaArtworkView(item: item, size: 48)
+            if isCurrent {
+                MediaArtworkView(item: item, size: 48)
+                    .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace)
+            } else {
+                MediaArtworkView(item: item, size: 48)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayName)
@@ -90,14 +93,11 @@ struct MiniPlayerView: View {
         .contentShape(Rectangle())
     }
 
-    /// Horizontal drag: slide neighbors in with the finger; commit past the
-    /// threshold with a smooth roll-off, then swap tracks invisibly.
     private func swipeGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 15)
             .onChanged { value in
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 var offset = value.translation.width
-                // Rubber-band when there is no song in that direction.
                 if offset < 0 && playerVM.nextItem == nil { offset /= 3 }
                 if offset > 0 && playerVM.previousItem == nil { offset /= 3 }
                 swipeOffset = offset
@@ -114,7 +114,6 @@ struct MiniPlayerView: View {
             }
     }
 
-    /// Snaps the carousel back to center without animating.
     private func resetSwipeOffset() {
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -134,14 +133,12 @@ struct MiniPlayerView: View {
     }
 }
 
-/// The elapsed/total clock, isolated in its own view so the twice-a-second
-/// time ticks re-render only this label instead of the whole mini player.
 private struct MiniTimeLabel: View {
     @Environment(PlaybackTimeModel.self) private var timeModel
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
 
     var body: some View {
-        Text(timeModel.currentTime.formattedTime + " / " + timeModel.duration.formattedTime)
+        Text(timeModel.currentTime.formattedTime)
             .font(.subheadline)
             .foregroundStyle(themeStore.theme.textSecondary)
     }

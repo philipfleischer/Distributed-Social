@@ -12,9 +12,9 @@ import PhotosUI
 
 struct PlaylistsView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var mediaLibraryService: MediaLibraryService
+    @Environment(MediaLibraryService.self) private var mediaLibraryService
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     @Query(sort: \Playlist.name) private var playlists: [Playlist]
 
     @State private var searchText = ""

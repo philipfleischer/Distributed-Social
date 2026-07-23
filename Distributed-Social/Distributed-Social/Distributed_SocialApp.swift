@@ -11,7 +11,7 @@ import SwiftData
 @main
 struct Distributed_SocialApp: App {
     private let deps = AppDependencies()
-    @StateObject private var themeStore = ThemeStore()
+    @State private var themeStore = ThemeStore()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -19,8 +19,8 @@ struct Distributed_SocialApp: App {
             ContentView(fileImportService: deps.fileImportService)
                 .environment(deps.playerViewModel)
                 .environment(deps.playbackTimeModel)
-                .environmentObject(deps.mediaLibraryService)
-                .environmentObject(themeStore)
+                .environment(deps.mediaLibraryService)
+                .environment(themeStore)
                 .tint(themeStore.theme.textPrimary)
                 .preferredColorScheme(themeStore.theme.colorScheme)
                 .onChange(of: scenePhase) { _, phase in

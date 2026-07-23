@@ -12,7 +12,7 @@ import SwiftUI
 
 struct QueueSheet: View {
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     @Environment(\.dismiss) private var dismiss
 
     private var theme: AppTheme { themeStore.theme }
@@ -24,14 +24,14 @@ struct QueueSheet: View {
                     ContentUnavailableView(
                         "Queue Is Empty",
                         systemImage: "list.number",
-                        description: Text("Use “Play Next” or “Add to Queue” on a song to line it up.")
+                        description: Text("Use Play Next or Add to Queue on a song to line it up.")
                     )
                 } else {
                     List {
                         if !playerVM.queuedItems.isEmpty {
                             Section {
                                 ForEach(playerVM.queuedItems) { entry in
-                                    queueRow(for: entry)
+                                    queueRow(for: entry, isManual: true)
                                 }
                                 .onDelete { playerVM.removeFromQueued(at: $0) }
                                 .onMove { playerVM.moveQueued(fromOffsets: $0, toOffset: $1) }
@@ -47,7 +47,7 @@ struct QueueSheet: View {
                         if !playerVM.upNext.isEmpty {
                             Section("Next Up") {
                                 ForEach(playerVM.upNext) { entry in
-                                    queueRow(for: entry)
+                                    queueRow(for: entry, isManual: false)
                                 }
                                 .onDelete { playerVM.removeFromUpNext(at: $0) }
                                 .onMove { playerVM.moveUpNext(fromOffsets: $0, toOffset: $1) }
@@ -74,7 +74,7 @@ struct QueueSheet: View {
         .presentationDetents([.medium, .large])
     }
 
-    private func queueRow(for entry: QueueEntry) -> some View {
+    private func queueRow(for entry: QueueEntry, isManual: Bool) -> some View {
         let item = entry.item
         return HStack(spacing: 12) {
             MediaArtworkView(item: item, size: 44)
@@ -98,6 +98,30 @@ struct QueueSheet: View {
         .contentShape(Rectangle())
         .onTapGesture {
             playerVM.jump(to: entry)
+        }
+        .contextMenu {
+            if isManual {
+                Button {
+                    playerVM.playNext(item)
+                    // Remove this entry from its current position so it isn't duplicated.
+                    if let idx = playerVM.queuedItems.firstIndex(where: { $0.id == entry.id }) {
+                        playerVM.removeFromQueued(at: IndexSet(integer: idx))
+                    }
+                } label: {
+                    Label("Move to Front", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+                Button(role: .destructive) {
+                    if let idx = playerVM.queuedItems.firstIndex(where: { $0.id == entry.id }) {
+                        playerVM.removeFromQueued(at: IndexSet(integer: idx))
+                    }
+                } label: {
+                    Label("Remove", systemImage: "minus.circle")
+                }
+            } else {
+                Button { playerVM.playNext(item) } label: {
+                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+            }
         }
         .listRowBackground(Color.clear)
     }

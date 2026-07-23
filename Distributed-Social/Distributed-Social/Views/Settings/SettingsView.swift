@@ -10,8 +10,8 @@ import SwiftData
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var mediaLibraryService: MediaLibraryService
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(MediaLibraryService.self) private var mediaLibraryService
+    @Environment(ThemeStore.self) private var themeStore
     @StateObject private var importVM: ImportViewModel
 
     init(fileImportService: FileImportServiceProtocol) {
@@ -78,17 +78,18 @@ struct SettingsView: View {
                 // MARK: About
                 Section("About") {
                     LabeledContent("Version", value: appVersion)
-                    Link(destination: URL(string: Constants.Links.repository)!) {
-                        Label("GitHub Repository", systemImage: "link")
-                            .foregroundStyle(theme.textPrimary)
+                    if let url = URL(string: Constants.Links.repository) {
+                        Link(destination: url) {
+                            Label("GitHub Repository", systemImage: "link")
+                                .foregroundStyle(theme.textPrimary)
+                        }
                     }
                 }
             }
             .scrollContentBackground(.hidden)
-            .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
+            .contentMargins(.bottom, 120, for: .scrollContent)
             .summerBackground()
             .navigationTitle("Settings")
-            .overlay(alignment: .top) { toast }
             .animation(.spring(duration: 0.3), value: importVM.state)
             .sheet(isPresented: $importVM.isPickerPresented) {
                 DocumentPickerWrapper(mode: .files) { urls in
@@ -110,6 +111,10 @@ struct SettingsView: View {
                 }
             }
         }
+        // Toast overlay lives outside the NavigationStack so it renders above
+        // the navigation chrome (safe-area insets and toolbars don't clip it).
+        .overlay(alignment: .top) { toast }
+        .animation(.spring(duration: 0.3), value: importVM.state)
     }
 
     /// Small circle previewing a theme's background + accent.
@@ -162,7 +167,6 @@ struct SettingsView: View {
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
-    /// Inserts the imported items and builds a playlist from them, in order.
     private func createPlaylist(named name: String, with items: [MediaItem]) {
         guard !items.isEmpty else { return }
         let mediaType: MediaType = items.allSatisfy { $0.mediaType == .video } ? .video : .audio

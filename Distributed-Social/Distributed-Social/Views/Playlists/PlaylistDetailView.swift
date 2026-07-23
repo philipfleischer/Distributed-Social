@@ -9,7 +9,7 @@ import SwiftData
 struct PlaylistDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     let playlist: Playlist
 
     @State private var searchText = ""
@@ -84,6 +84,15 @@ struct PlaylistDetailView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 if !sortedItems.isEmpty { EditButton() }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if !sortedItems.isEmpty {
+                    Button {
+                        playShuffle()
+                    } label: {
+                        Label("Shuffle", systemImage: "shuffle")
+                    }
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 if !sortedItems.isEmpty {
@@ -168,6 +177,13 @@ struct PlaylistDetailView: View {
         let startItem = items.first { $0.id == playlist.lastPlayedItemId } ?? items[0]
         registerPlay(of: startItem)
         playerVM.play(item: startItem, in: items)
+    }
+
+    private func playShuffle() {
+        let items = playableQueue.shuffled()
+        guard let first = items.first else { return }
+        registerPlay(of: first)
+        playerVM.play(item: first, in: items)
     }
 
     private var formattedTotal: String {

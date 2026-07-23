@@ -10,26 +10,29 @@ import SwiftUI
 
 struct PlayerControlsView: View {
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
+
+    /// Injected by FullPlayerView so next/prev button taps animate the
+    /// carousel.  Falls back to direct service calls when nil (e.g. previews).
+    var onNextTrack: (() -> Void)? = nil
+    var onPreviousTrack: (() -> Void)? = nil
 
     private var theme: AppTheme { themeStore.theme }
-    /// Inactive toggle buttons use plain grey so the active accent color is
-    /// unmistakable.
     private var inactive: Color { Color.gray }
 
     var body: some View {
         VStack(spacing: 22) {
-            // Progress bar (separate view: it alone re-renders on time ticks)
             PlaybackProgressView()
 
-            // Main controls row: shuffle | prev | play/pause | next | repeat
             HStack(spacing: 32) {
                 Button { playerVM.toggleShuffle() } label: {
                     Image(systemName: "shuffle")
                         .font(.title3)
                         .foregroundStyle(playerVM.isShuffleEnabled ? theme.textPrimary : inactive)
                 }
-                Button { playerVM.previousTrack() } label: {
+                Button {
+                    (onPreviousTrack ?? { playerVM.previousTrack() })()
+                } label: {
                     Image(systemName: "backward.fill").font(.title)
                 }
                 Button { playerVM.togglePlayPause() } label: {
@@ -37,10 +40,12 @@ struct PlayerControlsView: View {
                         .font(.system(size: 72))
                         .foregroundStyle(theme.textPrimary)
                 }
-                Button { playerVM.nextTrack() } label: {
+                .buttonStyle(ScaleOnPressButtonStyle())
+                Button {
+                    (onNextTrack ?? { playerVM.nextTrack() })()
+                } label: {
                     Image(systemName: "forward.fill").font(.title)
                 }
-                // Repeat button — cycles off → all → one → off
                 Button { playerVM.cycleRepeatMode() } label: {
                     ZStack {
                         Image(systemName: playerVM.repeatMode.systemImage)
@@ -57,9 +62,11 @@ struct PlayerControlsView: View {
             }
             .foregroundStyle(theme.textPrimary)
 
-            // Skip buttons + favorite row (speed moved to the player header)
             HStack(spacing: 44) {
-                Button { playerVM.skip(by: -Constants.Playback.skipInterval) } label: {
+                Button {
+                    Haptics.light()
+                    playerVM.skip(by: -Constants.Playback.skipInterval)
+                } label: {
                     Image(systemName: "gobackward.15").font(.title2)
                 }
 
@@ -73,7 +80,10 @@ struct PlayerControlsView: View {
                         .frame(minWidth: 56)
                 }
 
-                Button { playerVM.skip(by: Constants.Playback.skipInterval) } label: {
+                Button {
+                    Haptics.light()
+                    playerVM.skip(by: Constants.Playback.skipInterval)
+                } label: {
                     Image(systemName: "goforward.15").font(.title2)
                 }
             }
@@ -83,12 +93,22 @@ struct PlayerControlsView: View {
     }
 }
 
+/// Scales down slightly on press, springs back on release — applied to the
+/// large play/pause button for a snappier tactile feel.
+private struct ScaleOnPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
+    }
+}
+
 /// The scrubber + time labels. Observes PlaybackTimeModel so the twice-a-
 /// second position updates re-render only this small view.
 struct PlaybackProgressView: View {
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(PlaybackTimeModel.self) private var timeModel
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     @State private var isScrubbing = false
     @State private var scrubPosition: TimeInterval = 0
 
@@ -108,7 +128,8 @@ struct PlaybackProgressView: View {
             }
             .tint(theme.textPrimary)
             HStack {
-                Text(timeModel.currentTime.formattedTime)
+                // Show scrub position during drag so the label tracks the thumb.
+                Text(isScrubbing ? scrubPosition.formattedTime : timeModel.currentTime.formattedTime)
                     .font(.subheadline).foregroundStyle(theme.textSecondary)
                 Spacer()
                 Text(timeModel.duration.formattedTime)
@@ -116,8 +137,6 @@ struct PlaybackProgressView: View {
             }
         }
         .onChange(of: playerVM.currentItem?.id) { _, _ in
-            // New track: drop any in-flight scrub state so the thumb snaps
-            // back to the start immediately.
             isScrubbing = false
             scrubPosition = 0
         }

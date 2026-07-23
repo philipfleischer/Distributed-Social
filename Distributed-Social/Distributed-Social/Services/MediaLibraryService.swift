@@ -8,9 +8,10 @@
 
 import SwiftData
 import Foundation
-import Combine
+import Observation
 
-final class MediaLibraryService: ObservableObject, MediaLibraryServiceProtocol {
+@Observable
+final class MediaLibraryService: MediaLibraryServiceProtocol {
 
     private let fileImportService: FileImportServiceProtocol
 

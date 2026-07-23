@@ -9,9 +9,10 @@ import SwiftData
 struct VideoLibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var mediaLibraryService: MediaLibraryService
-    @Query(sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
-    @StateObject private var viewModel = VideoLibraryViewModel()
+    @Environment(MediaLibraryService.self) private var mediaLibraryService
+    @Query(filter: #Predicate<MediaItem> { $0.mediaTypeRaw == "video" },
+           sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
+    @State private var viewModel = VideoLibraryViewModel()
 
     @State private var itemForPlaylist: MediaItem?
 
@@ -32,8 +33,6 @@ struct VideoLibraryView: View {
                     VideoRowView(
                         item: item,
                         isCurrent: isCurrent,
-                        // Scoped to the row: play/pause then only re-renders
-                        // the current row, not the whole list.
                         isPlaying: isCurrent && playerVM.isPlaying,
                         isMissing: isMissing,
                         onPlay: { handlePlay(item, in: items) }
@@ -62,23 +61,41 @@ struct VideoLibraryView: View {
                     }
                 }
                 .scrollContentBackground(.hidden)
-                .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
+                .contentMargins(.bottom, 120, for: .scrollContent)
             }
         }
         .summerBackground()
         .navigationTitle("Video")
         .searchable(text: $viewModel.searchText)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ForEach(LibrarySortOrder.allCases) { order in
+                        Button {
+                            viewModel.sortOrder = order
+                        } label: {
+                            if viewModel.sortOrder == order {
+                                Label(order.rawValue, systemImage: "checkmark")
+                            } else {
+                                Text(order.rawValue)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+            }
+        }
         .sheet(item: $itemForPlaylist) { item in
             AddToPlaylistSheet(item: item)
         }
     }
 
-    /// Tapping the current item toggles play/pause; any other item starts playing.
     private func handlePlay(_ item: MediaItem, in items: [MediaItem]) {
         if playerVM.currentItem?.id == item.id {
             playerVM.togglePlayPause()
         } else {
-            playerVM.currentPlaylistID = nil // playing from the library, not a playlist
+            playerVM.currentPlaylistID = nil
             playerVM.play(item: item, in: items)
         }
     }

@@ -12,18 +12,23 @@
 import SwiftUI
 
 struct FullPlayerView: View {
+    let artworkNamespace: Namespace.ID
+
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject var mediaLibraryService: MediaLibraryService
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(MediaLibraryService.self) private var mediaLibraryService
+    @Environment(ThemeStore.self) private var themeStore
     @State private var itemForPlaylist: MediaItem?
     @State private var showQueue = false
+    @State private var showFadeSheet = false
+    @State private var triggerAirPlay = false
     @State private var dragOffset: CGFloat = 0
     @State private var swipeOffset: CGFloat = 0
-    /// Card width measured by the carousel — used by the swipe gesture so
-    /// it doesn't depend on the deprecated UIScreen.main.
     @State private var carouselWidth: CGFloat = 0
+    /// Drives a fade-in on the artwork when the track changes without a
+    /// carousel animation (auto-advance, lock-screen skip, etc.).
+    @State private var artworkOpacity: Double = 1.0
 
     private var theme: AppTheme { themeStore.theme }
 
@@ -38,7 +43,6 @@ struct FullPlayerView: View {
                     .padding(.horizontal)
                 titleBlock(for: playerVM.currentItem)
             } else {
-                // Carousel: previous/current/next cards slide with the drag.
                 GeometryReader { geo in
                     let width = geo.size.width
                     ZStack {
@@ -61,13 +65,24 @@ struct FullPlayerView: View {
                 }
                 .frame(height: 430)
                 .clipped()
-                // Track-change swipes only start inside the song card (cover
-                // + title/artist); everywhere else only pull-down works.
                 .contentShape(Rectangle())
                 .gesture(playerGesture)
             }
 
-            PlayerControlsView()
+            PlayerControlsView(
+                onNextTrack: {
+                    guard playerVM.nextItem != nil else { return }
+                    commitSwipe(to: -(carouselWidth > 0 ? carouselWidth : 393)) {
+                        playerVM.nextTrack()
+                    }
+                },
+                onPreviousTrack: {
+                    guard playerVM.previousItem != nil else { return }
+                    commitSwipe(to: carouselWidth > 0 ? carouselWidth : 393) {
+                        playerVM.swipeToPreviousTrack()
+                    }
+                }
+            )
 
             Spacer(minLength: 0)
         }
@@ -78,20 +93,24 @@ struct FullPlayerView: View {
                 .background(theme.backgroundColors.first ?? .black)
                 .ignoresSafeArea()
         )
+        // Hidden AirPlay trigger — lives in the view tree so AVRoutePickerView
+        // is attached to the window and can present the system picker.
+        .background(
+            AirPlayTriggerView(trigger: $triggerAirPlay)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        )
         .offset(y: max(0, dragOffset))
         .gesture(dismissGesture)
         .animation(.spring(duration: 0.3), value: dragOffset)
         .onChange(of: playerVM.currentItem?.id) { _, _ in
-            // Track changed (next button, song ended, lock screen…): any
-            // leftover carousel offset — e.g. from a drag the system
-            // cancelled without onEnded — would show the new cover
-            // off-center with the neighbor card peeking in.
             resetSwipeOffset()
+            // Fade the artwork in so auto-advance doesn't hard-cut to the
+            // new cover. Carousel swipes already provide their own visual.
+            artworkOpacity = 0.0
+            withAnimation(.easeIn(duration: 0.3)) { artworkOpacity = 1.0 }
         }
         .onChange(of: scenePhase) { _, phase in
-            // The app-switcher gesture (bottom-edge swipe) starts as a drag
-            // in the app, then the system steals it without onEnded — the
-            // app resigns active at that moment, so reset here.
             if phase != .active { resetSwipeOffset() }
         }
         .sheet(item: $itemForPlaylist) { item in
@@ -100,14 +119,31 @@ struct FullPlayerView: View {
         .sheet(isPresented: $showQueue) {
             QueueSheet()
         }
+        .sheet(isPresented: $showFadeSheet) {
+            SongFadeSheet(
+                selectedSeconds: Binding(
+                    get: { playerVM.songFadeSeconds },
+                    set: { playerVM.setSongFade(seconds: $0) }
+                )
+            )
+            .presentationDetents([.medium])
+        }
     }
 
     // MARK: - Pieces
 
     private func songCard(for item: MediaItem) -> some View {
-        VStack(spacing: 20) {
-            MediaArtworkView(item: item, size: 330)
-                .shadow(color: .black.opacity(0.5), radius: 14, y: 7)
+        let isCurrent = item.id == playerVM.currentItem?.id
+        return VStack(spacing: 20) {
+            if isCurrent {
+                MediaArtworkView(item: item, size: 330)
+                    .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace)
+                    .shadow(color: .black.opacity(0.5), radius: 14, y: 7)
+                    .opacity(artworkOpacity)
+            } else {
+                MediaArtworkView(item: item, size: 330)
+                    .shadow(color: .black.opacity(0.5), radius: 14, y: 7)
+            }
             titleBlock(for: item)
         }
         .frame(maxWidth: .infinity)
@@ -116,26 +152,27 @@ struct FullPlayerView: View {
     @ViewBuilder
     private func titleBlock(for item: MediaItem?) -> some View {
         VStack(spacing: 4) {
-            Text(item?.displayName ?? "")
-                .font(.title)
-                .fontWeight(.semibold)
-                .foregroundStyle(theme.textPrimary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
+            MarqueeText(
+                text: item?.displayName ?? "",
+                font: .title.weight(.semibold),
+                color: theme.textPrimary,
+                lineHeight: 36
+            )
+            .padding(.horizontal)
             if let artist = item?.artist {
-                Text(artist)
-                    .font(.title3)
-                    .foregroundStyle(theme.textSecondary)
+                MarqueeText(
+                    text: artist,
+                    font: .title3,
+                    color: theme.textSecondary,
+                    lineHeight: 28
+                )
+                .padding(.horizontal)
             }
         }
-        .padding(.horizontal)
     }
 
     // MARK: - Gestures
 
-    /// Pull-down-to-dismiss for everywhere outside the song card. Horizontal
-    /// movement is deliberately ignored so a drag near the scrubber can
-    /// never switch tracks.
     private var dismissGesture: some Gesture {
         DragGesture(minimumDistance: 15)
             .onChanged { value in
@@ -151,7 +188,6 @@ struct FullPlayerView: View {
             }
     }
 
-    /// Vertical pull dismisses; horizontal drag slides the song carousel.
     private var playerGesture: some Gesture {
         DragGesture(minimumDistance: 15)
             .onChanged { value in
@@ -159,7 +195,6 @@ struct FullPlayerView: View {
                     dragOffset = value.translation.height
                 } else {
                     var offset = value.translation.width
-                    // Rubber-band when there is no song in that direction.
                     if offset < 0 && playerVM.nextItem == nil { offset /= 3 }
                     if offset > 0 && playerVM.previousItem == nil { offset /= 3 }
                     swipeOffset = offset
@@ -181,15 +216,12 @@ struct FullPlayerView: View {
                     if vertical > 90 {
                         playerVM.isFullPlayerPresented = false
                     }
-                    // A mixed drag can set swipeOffset before turning
-                    // vertical — clear it or the card sticks off-center.
                     withAnimation(.spring(duration: 0.25)) { swipeOffset = 0 }
                 }
                 dragOffset = 0
             }
     }
 
-    /// Snaps the carousel back to center without animating.
     private func resetSwipeOffset() {
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -199,9 +231,6 @@ struct FullPlayerView: View {
         }
     }
 
-    /// Deletes the playing song: playback advances to the next track (or
-    /// stops and closes the player when nothing is left), then the file and
-    /// library entry are removed.
     private func deleteCurrentSong(_ item: MediaItem) {
         playerVM.removeFromPlayback(item)
         if playerVM.currentItem == nil {
@@ -222,7 +251,9 @@ struct FullPlayerView: View {
         }
     }
 
-    /// Dismiss chevron on the left; speed, queue, and "⋮" menu on the right.
+    // MARK: - Header
+
+    /// Queue and "⋮" on the right; AirPlay lives inside the "⋮" menu.
     private var header: some View {
         HStack {
             Button {
@@ -235,9 +266,6 @@ struct FullPlayerView: View {
 
             Spacer()
 
-            AirPlayButton(tint: theme.textPrimary)
-                .frame(width: 44, height: 44)
-
             Button {
                 showQueue = true
             } label: {
@@ -246,7 +274,6 @@ struct FullPlayerView: View {
                     .frame(width: 44, height: 44)
             }
 
-            // "⋮": add to playlist, playback speed, sleep timer.
             Menu {
                 if let item = playerVM.currentItem {
                     Button { itemForPlaylist = item } label: {
@@ -269,26 +296,15 @@ struct FullPlayerView: View {
                           systemImage: "gauge.with.needle")
                 }
 
-                Menu {
-                    ForEach([5, 10, 15, 30, 45, 60], id: \.self) { minutes in
-                        Button { playerVM.setSleepTimer(minutes: minutes) } label: {
-                            Text("\(minutes) minutes")
-                        }
-                    }
-                    if playerVM.sleepTimerEnd != nil {
-                        Divider()
-                        Button(role: .destructive) {
-                            playerVM.setSleepTimer(minutes: nil)
-                        } label: {
-                            Label("Turn Off", systemImage: "moon.zzz")
-                        }
-                    }
-                } label: {
+                Button { triggerAirPlay = true } label: {
+                    Label("AirPlay", systemImage: "airplayvideo")
+                }
+
+                Button { showFadeSheet = true } label: {
+                    let s = playerVM.songFadeSeconds
                     Label(
-                        playerVM.sleepTimerEnd.map {
-                            "Sleep Timer (until \($0.formatted(date: .omitted, time: .shortened)))"
-                        } ?? "Sleep Timer",
-                        systemImage: playerVM.sleepTimerEnd == nil ? "moon" : "moon.fill"
+                        s > 0 ? "Song Fade (\(s)s)" : "Song Fade",
+                        systemImage: s > 0 ? "forward.end.fill" : "forward.end"
                     )
                 }
 
@@ -309,5 +325,57 @@ struct FullPlayerView: View {
         }
         .foregroundStyle(theme.textPrimary)
         .padding(.horizontal, 12)
+    }
+}
+
+// MARK: - Song Fade Sheet
+
+private struct SongFadeSheet: View {
+    @Binding var selectedSeconds: Int
+    @Environment(ThemeStore.self) private var themeStore
+    @Environment(\.dismiss) private var dismiss
+
+    private var theme: AppTheme { themeStore.theme }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                Text("Skip the last N seconds of every song — great for long silence or fade-outs you don't want to sit through.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+
+                Picker("Song Fade", selection: $selectedSeconds) {
+                    Text("Off").tag(0)
+                    ForEach(1...15, id: \.self) { s in
+                        Text("\(s) sec").tag(s)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .labelsHidden()
+                .frame(height: 180)
+
+                if selectedSeconds > 0 {
+                    Text("Skipping last \(selectedSeconds) second\(selectedSeconds == 1 ? "" : "s")")
+                        .font(.headline)
+                        .foregroundStyle(theme.textPrimary)
+                } else {
+                    Text("Disabled")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding(.top, 24)
+            .navigationTitle("Song Fade")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }

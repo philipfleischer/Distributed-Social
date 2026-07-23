@@ -12,7 +12,6 @@ final class Playlist {
     var name: String = ""
     var mediaTypeRaw: String = MediaType.audio.rawValue
     var lastPlayedItemId: UUID?
-    var lastPlayedPosition: TimeInterval = 0
     var lastPlayedDate: Date?
     var playCount: Int = 0
     /// Optional custom cover image chosen by the user (stored outside the DB).
@@ -32,6 +31,5 @@ final class Playlist {
         self.id = UUID()
         self.name = name
         self.mediaTypeRaw = mediaType.rawValue
-        self.lastPlayedPosition = 0
     }
 }

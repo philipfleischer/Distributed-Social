@@ -12,9 +12,10 @@ import SwiftData
 
 struct HomeView: View {
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var themeStore: ThemeStore
+    @Environment(ThemeStore.self) private var themeStore
     @Query private var playlists: [Playlist]
     @Query private var allItems: [MediaItem]
+    @Query(filter: #Predicate<MediaItem> { $0.isFavorite }) private var favorites: [MediaItem]
     @State private var searchText = ""
 
     private var theme: AppTheme { themeStore.theme }
@@ -33,16 +34,16 @@ struct HomeView: View {
             .prefix(6).map { $0 }
     }
 
-    private var audioCount: Int { allItems.filter { $0.mediaType == .audio }.count }
-    private var videoCount: Int { allItems.filter { $0.mediaType == .video }.count }
+    /// Single pass through allItems to get both counts simultaneously.
+    private var libraryCounts: (audio: Int, video: Int) {
+        allItems.reduce(into: (audio: 0, video: 0)) { acc, item in
+            if item.mediaTypeRaw == "audio" { acc.audio += 1 }
+            else { acc.video += 1 }
+        }
+    }
 
     /// Fixed per app launch, so the favorites picks reshuffle on each run.
     private static let sessionSeed = Int.random(in: 1...0x7FFFFFFF)
-
-    /// Songs hearted via the player's favorite button.
-    private var favorites: [MediaItem] {
-        allItems.filter { $0.isFavorite }
-    }
 
     /// Six favorites chosen pseudo-randomly, stable within a launch but
     /// different on the next one — surfaces fresh favorites every run.
@@ -78,7 +79,8 @@ struct HomeView: View {
     // MARK: - Default home content
 
     private var homeContent: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        let counts = libraryCounts
+        return VStack(alignment: .leading, spacing: 28) {
             if !popular.isEmpty {
                 playlistRow(title: "Popular", playlists: popular)
             }
@@ -92,12 +94,10 @@ struct HomeView: View {
                     .padding(.horizontal)
             }
 
-            // Favorites — between Recently Played and Your Library
             if !favorites.isEmpty {
                 favoritesRow
             }
 
-            // Library boxes
             VStack(alignment: .leading, spacing: 14) {
                 Text("Your Library")
                     .font(.title2).fontWeight(.semibold)
@@ -110,7 +110,7 @@ struct HomeView: View {
                     } label: {
                         libraryBox(
                             title: "Audio",
-                            count: audioCount,
+                            count: counts.audio,
                             systemImage: "music.note.list",
                             colors: [Color.skyBlue, Color.deepSky]
                         )
@@ -120,7 +120,7 @@ struct HomeView: View {
                     } label: {
                         libraryBox(
                             title: "Video",
-                            count: videoCount,
+                            count: counts.video,
                             systemImage: "film",
                             colors: [Color.sakuraPink, Color(red: 0.859, green: 0.443, blue: 0.576)]
                         )
@@ -130,7 +130,7 @@ struct HomeView: View {
             }
         }
         .padding(.top, 12)
-        .padding(.bottom, 120) // clear the mini player
+        .padding(.bottom, 120)
     }
 
     // MARK: - Search results
@@ -161,7 +161,6 @@ struct HomeView: View {
                             .font(.title2).fontWeight(.semibold)
                             .foregroundStyle(theme.textPrimary)
                         Spacer()
-                        // Play every match like a temporary playlist.
                         Button {
                             let playable = matchedItems.filter { !$0.isFileMissing }
                             if let first = playable.first {
@@ -176,8 +175,6 @@ struct HomeView: View {
                     }
                     .padding(.horizontal)
 
-                    // Lazy: a short query can match most of the library —
-                    // only build (and decode artwork for) visible rows.
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(matchedItems) { item in
                             Button {
@@ -217,8 +214,8 @@ struct HomeView: View {
 
     // MARK: - Pieces
 
-    /// Horizontal carousel of six per-launch random favorites, ending in a
-    /// "Show More" tile that opens the full favorites list.
+    /// Horizontal carousel of up to six per-launch random favorites.
+    /// "Show More" tile only appears when there are more than 6.
     private var favoritesRow: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Favorites")
@@ -245,28 +242,29 @@ struct HomeView: View {
                         .buttonStyle(.plain)
                     }
 
-                    // Show More → full favorites list
-                    NavigationLink {
-                        FavoritesView()
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 110 * 0.21)
-                                    .fill(theme.chipFill)
-                                    .frame(width: 110, height: 110)
-                                VStack(spacing: 8) {
-                                    Image(systemName: "chevron.right.circle.fill")
-                                        .font(.title)
-                                    Text("Show More")
-                                        .font(.subheadline.weight(.semibold))
+                    if favorites.count > 6 {
+                        NavigationLink {
+                            FavoritesView()
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 110 * 0.21)
+                                        .fill(theme.chipFill)
+                                        .frame(width: 110, height: 110)
+                                    VStack(spacing: 8) {
+                                        Image(systemName: "chevron.right.circle.fill")
+                                            .font(.title)
+                                        Text("Show More")
+                                            .font(.subheadline.weight(.semibold))
+                                    }
+                                    .foregroundStyle(theme.textPrimary)
                                 }
-                                .foregroundStyle(theme.textPrimary)
+                                Text(" ")
+                                    .font(.subheadline)
                             }
-                            Text(" ") // baseline-aligns with the song tiles
-                                .font(.subheadline)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal)
             }

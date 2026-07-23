@@ -23,77 +23,32 @@ enum FileImportError: LocalizedError {
 
 final class FileImportService: FileImportServiceProtocol {
 
-    private var mediaDirectory: URL {
+    /// Built once at init — avoids repeated URL construction and directory
+    /// creation on every import call.
+    private let mediaDirectory: URL
+
+    init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent(Constants.Directories.media)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+        mediaDirectory = dir
     }
 
     func importFile(from sourceURL: URL) async throws -> MediaItem {
         let accessed = sourceURL.startAccessingSecurityScopedResource()
         defer { if accessed { sourceURL.stopAccessingSecurityScopedResource() } }
 
-        if isDuplicateOfExistingImport(sourceURL) {
+        let existingFiles = currentMediaFiles()
+        if Self.isDuplicate(sourceURL, in: existingFiles) {
             throw FileImportError.duplicate
         }
 
-        // Unique filename prevents collisions on duplicate names.
-        let uniqueFilename = "\(UUID().uuidString)-\(sourceURL.lastPathComponent)"
-        let destination = mediaDirectory.appendingPathComponent(uniqueFilename)
-
-        try FileManager.default.copyItem(at: sourceURL, to: destination)
-
-        let asset = AVURLAsset(url: destination)
-        let cmDuration = try await asset.load(.duration)
-        let duration = cmDuration.seconds.isNaN ? 0 : cmDuration.seconds
-
-        // Prefer the file's embedded tags (title / artist / cover art, as
-        // written by Spotify and most encoders); fall back to the filename.
-        let tags = await loadEmbeddedTags(from: asset)
-
-        let mediaType: MediaType = sourceURL.isVideoFile ? .video : .audio
-        let fallbackName = sourceURL.deletingPathExtension().lastPathComponent
-
-        return MediaItem(
-            displayName: tags.title ?? fallbackName,
-            filename: uniqueFilename,
-            mediaType: mediaType,
-            duration: duration,
-            artist: tags.artist,
-            artworkData: await displaySizedArtwork(tags.artwork)
-        )
+        return try await copyAndProcess(sourceURL: sourceURL)
     }
 
-    /// A file with the same original name and byte size as an existing
-    /// import is the same song — importing it again would only duplicate the
-    /// library entry (playlists all reference the single existing entry).
-    /// Every import lives in Documents/Media as "<UUID>-<originalName>",
-    /// so the original name is everything after the 37-char UUID prefix.
-    private func isDuplicateOfExistingImport(_ sourceURL: URL) -> Bool {
-        guard let sourceSize = try? sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
-        else { return false }
-        let name = sourceURL.lastPathComponent
-        let existing = (try? FileManager.default.contentsOfDirectory(
-            at: mediaDirectory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-        return existing.contains { url in
-            url.lastPathComponent.count > 37
-                && url.lastPathComponent.dropFirst(37) == name
-                && (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) == sourceSize
-        }
-    }
-
-    /// Embedded cover art is often much larger than it ever renders (the
-    /// biggest display is the full player at 330 pt ≈ 990 px @3x), so store
-    /// a display-sized JPEG instead of the original blob. Falls back to the
-    /// original when decoding fails or re-encoding doesn't shrink it.
-    private func displaySizedArtwork(_ data: Data?) async -> Data? {
-        guard let data else { return nil }
-        guard let scaled = await ArtworkThumbnailCache.downscaledCoverData(from: data),
-              scaled.count < data.count else { return data }
-        return scaled
-    }
-
+    /// Imports all audio/video files in a folder in parallel. Progress is
+    /// reported via `onProgress` as tasks complete (completion order is
+    /// non-deterministic; the returned items are re-sorted by name).
     func importFolder(from folderURL: URL,
                       onProgress: (_ current: Int, _ total: Int) -> Void) async throws -> (name: String, items: [MediaItem]) {
         let accessed = folderURL.startAccessingSecurityScopedResource()
@@ -108,13 +63,33 @@ final class FileImportService: FileImportServiceProtocol {
 
         guard !fileURLs.isEmpty else { throw FileImportError.noMediaFiles }
 
+        // Snapshot the existing library before any parallel write begins so
+        // every task uses the same baseline for duplicate detection.
+        let existingFiles = currentMediaFiles()
+
+        onProgress(0, fileURLs.count)
         var items: [MediaItem] = []
-        for (index, fileURL) in fileURLs.enumerated() {
-            onProgress(index + 1, fileURLs.count)
-            // Skip unreadable files rather than aborting the whole batch.
-            if let item = try? await importFile(from: fileURL) {
-                items.append(item)
+        var completed = 0
+
+        await withTaskGroup(of: MediaItem?.self) { group in
+            for fileURL in fileURLs {
+                group.addTask {
+                    let inner = fileURL.startAccessingSecurityScopedResource()
+                    defer { if inner { fileURL.stopAccessingSecurityScopedResource() } }
+                    guard !Self.isDuplicate(fileURL, in: existingFiles) else { return nil }
+                    return try? await self.copyAndProcess(sourceURL: fileURL)
+                }
             }
+            for await result in group {
+                completed += 1
+                onProgress(completed, fileURLs.count)
+                if let item = result { items.append(item) }
+            }
+        }
+
+        // TaskGroup delivers in completion order — restore filename order.
+        items.sort {
+            $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
         }
         return (name: folderURL.lastPathComponent, items: items)
     }
@@ -161,7 +136,66 @@ final class FileImportService: FileImportServiceProtocol {
         UserDefaults.standard.set(true, forKey: key)
     }
 
-    // MARK: - Embedded metadata
+    // MARK: - Private helpers
+
+    private func currentMediaFiles() -> [URL] {
+        (try? FileManager.default.contentsOfDirectory(
+            at: mediaDirectory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+    }
+
+    /// A file with the same original name and byte size as an existing import
+    /// is treated as the same song. Every import is stored as
+    /// "<UUID>-<originalName>", so the original name is everything after the
+    /// 37-char UUID prefix.
+    private static func isDuplicate(_ sourceURL: URL, in existingFiles: [URL]) -> Bool {
+        guard let sourceSize = try? sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        else { return false }
+        let name = sourceURL.lastPathComponent
+        return existingFiles.contains { url in
+            url.lastPathComponent.count > 37
+                && url.lastPathComponent.dropFirst(37) == name
+                && (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) == sourceSize
+        }
+    }
+
+    /// Copies the file to the media directory, reads embedded tags, and builds
+    /// a MediaItem. Duplicate checking is the caller's responsibility.
+    private func copyAndProcess(sourceURL: URL) async throws -> MediaItem {
+        let uniqueFilename = "\(UUID().uuidString)-\(sourceURL.lastPathComponent)"
+        let destination = mediaDirectory.appendingPathComponent(uniqueFilename)
+
+        try FileManager.default.copyItem(at: sourceURL, to: destination)
+
+        let asset = AVURLAsset(url: destination)
+        let cmDuration = try await asset.load(.duration)
+        let duration = cmDuration.seconds.isNaN ? 0 : cmDuration.seconds
+
+        // Prefer the file's embedded tags (title / artist / cover art, as
+        // written by Spotify and most encoders); fall back to the filename.
+        let tags = await loadEmbeddedTags(from: asset)
+
+        let mediaType: MediaType = sourceURL.isVideoFile ? .video : .audio
+        let fallbackName = sourceURL.deletingPathExtension().lastPathComponent
+
+        return MediaItem(
+            displayName: tags.title ?? fallbackName,
+            filename: uniqueFilename,
+            mediaType: mediaType,
+            duration: duration,
+            artist: tags.artist,
+            artworkData: await displaySizedArtwork(tags.artwork)
+        )
+    }
+
+    /// Embedded cover art is often much larger than it ever renders (the
+    /// biggest display is the full player at 330 pt ≈ 990 px @3x), so store
+    /// a display-sized JPEG instead of the original blob.
+    private func displaySizedArtwork(_ data: Data?) async -> Data? {
+        guard let data else { return nil }
+        guard let scaled = await ArtworkThumbnailCache.downscaledCoverData(from: data),
+              scaled.count < data.count else { return data }
+        return scaled
+    }
 
     /// Reads common metadata tags (ID3/iTunes-style) from the asset.
     private func loadEmbeddedTags(from asset: AVURLAsset) async -> (title: String?, artist: String?, artwork: Data?) {
@@ -180,7 +214,6 @@ final class FileImportService: FileImportServiceProtocol {
         let artist = try? await artistItem?.load(.stringValue)
         let artwork = try? await artworkItem?.load(.dataValue)
 
-        // Treat empty strings as missing so fallbacks kick in.
         return (
             title: (title?.isEmpty == false) ? title : nil,
             artist: (artist?.isEmpty == false) ? artist : nil,

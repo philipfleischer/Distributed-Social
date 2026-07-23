@@ -16,6 +16,7 @@ final class AppDependencies {
     let playbackTimeModel: PlaybackTimeModel
 
     init() {
+        Haptics.prepareAll()
         playbackService = PlaybackService()
         fileImportService = FileImportService()
         mediaLibraryService = MediaLibraryService(fileImportService: fileImportService)

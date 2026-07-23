@@ -12,9 +12,12 @@ import SwiftUI
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(PlayerViewModel.self) private var playerVM
-    @EnvironmentObject var mediaLibraryService: MediaLibraryService
+    @Environment(MediaLibraryService.self) private var mediaLibraryService
     let fileImportService: FileImportServiceProtocol
     @State private var selectedTab = 0
+    /// Shared namespace for the artwork hero animation between the mini player
+    /// and the full player.
+    @Namespace private var artworkNamespace
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -30,23 +33,27 @@ struct ContentView: View {
                     .tag(2)
             }
 
+            // Mini player: always in the hierarchy when something is loaded so
+            // matchedGeometryEffect can animate between it and the full player.
+            if playerVM.currentItem != nil {
+                MiniPlayerView(artworkNamespace: artworkNamespace)
+                    .padding(.bottom, 64)
+                    .opacity(playerVM.isFullPlayerPresented ? 0 : 1)
+                    .allowsHitTesting(!playerVM.isFullPlayerPresented)
+                    .zIndex(0)
+            }
+
             if playerVM.isFullPlayerPresented {
-                FullPlayerView()
-                    .transition(.move(edge: .bottom))
-                    .zIndex(1)
-            } else if playerVM.currentItem != nil {
-                MiniPlayerView()
-                    .padding(.bottom, 64) // sit clearly above the tab bar
+                FullPlayerView(artworkNamespace: artworkNamespace)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(1)
             }
         }
-        .animation(.spring(duration: 0.35), value: playerVM.isFullPlayerPresented)
+        .animation(.spring(duration: 0.45), value: playerVM.isFullPlayerPresented)
         .onChange(of: selectedTab) { _, _ in
-            // Selecting a tab collapses the full player to the mini player.
             playerVM.isFullPlayerPresented = false
         }
         .overlay(alignment: .top) {
-            // Confirmation toast for queue actions — visible on every screen.
             if let toast = playerVM.toast {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark.circle.fill")
@@ -68,13 +75,8 @@ struct ContentView: View {
         }
         .animation(.spring(duration: 0.3), value: playerVM.toast)
         .task {
-            // Deletes used to leave orphaned playlist rows behind — sweep
-            // any that remain from before the cascade existed.
             mediaLibraryService.cleanUpOrphanedPlaylistItems(in: modelContext)
-            // Old imports predate tag extraction — fill in their embedded
-            // title/artist/cover art once.
             await fileImportService.backfillMetadataIfNeeded(in: modelContext)
-            // Artwork stored full-size by older imports is downscaled once.
             await fileImportService.downscaleArtworkIfNeeded(in: modelContext)
         }
     }
@@ -86,5 +88,5 @@ struct ContentView: View {
     ContentView(fileImportService: fileImportService)
         .environment(PlayerViewModel(playbackService: playbackService))
         .environment(PlaybackTimeModel(playbackService: playbackService))
-        .environmentObject(MediaLibraryService(fileImportService: fileImportService))
+        .environment(MediaLibraryService(fileImportService: fileImportService))
 }

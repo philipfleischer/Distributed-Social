@@ -47,7 +47,10 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     /// Songs that come next naturally from the current context.
     private(set) var upNext: [QueueEntry] = []
     /// When set, playback pauses automatically at this time.
-    private(set) var sleepTimerEnd: Date?
+    /// Seconds to trim from the end of each song (0 = off).
+    private(set) var songFadeSeconds: Int = UserDefaults.standard.integer(forKey: "songFadeSeconds")
+    /// Prevents the fade skip from firing more than once per track.
+    private var hasFadeSkipped = false
 
     private let player = AVPlayer()
     /// Exposed so `VideoPlayerView` can render the current item.
@@ -56,6 +59,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     private var timeObserver: Any?
     private var itemEndObserver: NSObjectProtocol?
     private var resignObserver: NSObjectProtocol?
+    private var terminateObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
 
@@ -70,7 +74,6 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     /// Tracks whether `.one` repeat has already replayed the current track,
     /// so each song plays exactly twice before advancing.
     private var hasRepeatedCurrentItem = false
-    private var sleepTask: Task<Void, Never>?
     /// Guards the missing-file auto-skip from looping forever when every
     /// remaining song's file is gone.
     private var missingSkipCount = 0
@@ -84,6 +87,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         addTimeObserver()
         addEndObserver()
         addResignObserver()
+        addTerminateObserver()
         addInterruptionObserver()
         addRouteChangeObserver()
         setupRemoteCommands()
@@ -101,7 +105,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     }
 
     private func addTimeObserver() {
-        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        let interval = CMTime(seconds: 0.25, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
             guard let self else { return }
             // Read the live position instead of the callback's time argument:
@@ -110,6 +114,16 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
             // leaving the scrubber stuck at the old spot.
             let seconds = self.player.currentTime().seconds
             self.currentTime = seconds.isNaN ? 0 : seconds
+
+            // Song fade: skip the final N seconds so the user never sits
+            // through silence or a long fade-out at the end of a track.
+            let fade = self.songFadeSeconds
+            if fade > 0, self.duration > 0, !self.hasFadeSkipped {
+                if self.currentTime >= self.duration - TimeInterval(fade) {
+                    self.hasFadeSkipped = true
+                    self.handlePlaybackEnd()
+                }
+            }
         }
     }
 
@@ -126,6 +140,16 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     private func addResignObserver() {
         resignObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.saveCurrentPosition()
+        }
+    }
+
+    private func addTerminateObserver() {
+        terminateObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willTerminateNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -386,10 +410,18 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     }
 
     func seek(to position: TimeInterval) {
+        // Update immediately so the scrubber reflects the new position
+        // right away rather than waiting for the next periodic tick.
+        currentTime = position
         let time = CMTime(seconds: position, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         player.seek(to: time) { [weak self] _ in
             self?.updateNowPlayingInfo()
         }
+    }
+
+    func setSongFade(seconds: Int) {
+        songFadeSeconds = seconds
+        UserDefaults.standard.set(seconds, forKey: "songFadeSeconds")
     }
 
     func setSpeed(_ speed: Float) {
@@ -410,43 +442,6 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
     func cycleRepeatMode() {
         repeatMode = repeatMode.next()
-    }
-
-    // MARK: - Sleep timer
-
-    /// Pauses playback after the given number of minutes; nil cancels.
-    func setSleepTimer(minutes: Int?) {
-        sleepTask?.cancel()
-        sleepTask = nil
-        guard let minutes else {
-            sleepTimerEnd = nil
-            return
-        }
-        let end = Date().addingTimeInterval(TimeInterval(minutes * 60))
-        sleepTimerEnd = end
-        sleepTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(minutes * 60))
-            guard let self, !Task.isCancelled else { return }
-            if self.isPlaying { await self.fadeOutAndPause() }
-            self.sleepTimerEnd = nil
-        }
-    }
-
-    /// Fades the volume down over a few seconds before pausing — abrupt
-    /// silence is jarring when falling asleep. The volume is restored after
-    /// pausing so the next manual play starts at full volume.
-    private func fadeOutAndPause() async {
-        let steps = 30
-        for step in 1...steps {
-            try? await Task.sleep(for: .milliseconds(100))
-            guard !Task.isCancelled else {
-                player.volume = 1
-                return
-            }
-            player.volume = 1 - Float(step) / Float(steps)
-        }
-        if isPlaying { togglePlayPause() }
-        player.volume = 1
     }
 
     func saveCurrentPosition() {
@@ -626,6 +621,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
         currentItem = item
         hasRepeatedCurrentItem = false
+        hasFadeSkipped = false
 
         // Reset published time state immediately so the scrubber snaps to the
         // start of the new track instead of holding the previous position
@@ -668,6 +664,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         if let obs = timeObserver { player.removeTimeObserver(obs) }
         if let obs = itemEndObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = resignObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = terminateObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = interruptionObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = routeChangeObserver { NotificationCenter.default.removeObserver(obs) }
     }

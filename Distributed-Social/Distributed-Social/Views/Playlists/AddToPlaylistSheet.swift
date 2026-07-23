@@ -9,7 +9,7 @@ import SwiftData
 struct AddToPlaylistSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var mediaLibraryService: MediaLibraryService
+    @Environment(MediaLibraryService.self) private var mediaLibraryService
     @Query(sort: \Playlist.name) private var playlists: [Playlist]
 
     let item: MediaItem
