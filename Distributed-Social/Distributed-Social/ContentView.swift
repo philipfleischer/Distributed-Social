@@ -75,6 +75,7 @@ struct ContentView: View {
         }
         .animation(.spring(duration: 0.3), value: playerVM.toast)
         .task {
+            mediaLibraryService.cleanUpMissingFiles(in: modelContext)
             mediaLibraryService.cleanUpOrphanedPlaylistItems(in: modelContext)
             await fileImportService.backfillMetadataIfNeeded(in: modelContext)
             await fileImportService.downscaleArtworkIfNeeded(in: modelContext)

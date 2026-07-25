@@ -4,16 +4,13 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct PlaylistDetailView: View {
-    @Environment(\.modelContext) private var modelContext
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(ThemeStore.self) private var themeStore
     let playlist: Playlist
 
     @State private var searchText = ""
-    @State private var showAddSongs = false
 
     private var theme: AppTheme { themeStore.theme }
 
@@ -28,14 +25,11 @@ struct PlaylistDetailView: View {
     }
 
     private var totalDuration: TimeInterval {
-        // Summing doesn't need the sorted order — skip the sort.
         (playlist.orderedItems ?? []).compactMap { $0.mediaItem?.duration }.reduce(0, +)
     }
 
     var body: some View {
-        // One sort per render — the list, header, and toolbar all need the
-        // ordered rows, and sorting in each computed property re-sorted the
-        // playlist several times per body pass.
+        // One sort per render — the list and header both need the ordered rows.
         let sortedItems = playlist.sortedItems
         let visibleItems = visibleItems(in: sortedItems)
         List {
@@ -43,7 +37,7 @@ struct PlaylistDetailView: View {
                 ContentUnavailableView(
                     "Empty Playlist",
                     systemImage: "list.bullet",
-                    description: Text("Tap + to add songs from your library.")
+                    description: Text("Add songs via the library's context menu.")
                 )
             } else {
                 Section {
@@ -52,18 +46,6 @@ struct PlaylistDetailView: View {
                             row(for: pi, item: item)
                         }
                     }
-                    .onDelete { offsets in
-                        for i in offsets {
-                            modelContext.delete(visibleItems[i])
-                        }
-                        renumber()
-                    }
-                    .onMove { from, to in
-                        moveItems(from: from, to: to)
-                    }
-                    // Disabled while searching: the drag indices refer to
-                    // the filtered rows and would move the wrong songs.
-                    .moveDisabled(!searchText.isEmpty)
                 } header: {
                     Text("\(sortedItems.count) song\(sortedItems.count == 1 ? "" : "s") · \(formattedTotal)")
                         .font(.subheadline)
@@ -72,41 +54,10 @@ struct PlaylistDetailView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .contentMargins(.bottom, 120, for: .scrollContent) // clear the mini player
+        .contentMargins(.bottom, 120, for: .scrollContent)
         .summerBackground()
         .navigationTitle(playlist.name)
         .searchable(text: $searchText, prompt: "Search in playlist")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showAddSongs = true } label: {
-                    Image(systemName: "plus")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                if !sortedItems.isEmpty { EditButton() }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                if !sortedItems.isEmpty {
-                    Button {
-                        playShuffle()
-                    } label: {
-                        Label("Shuffle", systemImage: "shuffle")
-                    }
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                if !sortedItems.isEmpty {
-                    Button {
-                        playOrResume()
-                    } label: {
-                        Label("Play", systemImage: "play.fill")
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $showAddSongs) {
-            AddSongsSheet(playlist: playlist)
-        }
     }
 
     // MARK: - Rows
@@ -163,27 +114,9 @@ struct PlaylistDetailView: View {
 
     // MARK: - Helpers
 
-    /// Songs in playlist order whose files still exist. Only evaluated on
-    /// tap events, so the sort here doesn't run during rendering.
+    /// Songs in playlist order whose files still exist. Evaluated on tap, not during render.
     private var playableQueue: [MediaItem] {
         playlist.sortedItems.compactMap { $0.mediaItem }.filter { !$0.isFileMissing }
-    }
-
-    /// The toolbar Play button resumes from the last played song when the
-    /// playlist has one, otherwise starts from the top.
-    private func playOrResume() {
-        let items = playableQueue
-        guard !items.isEmpty else { return }
-        let startItem = items.first { $0.id == playlist.lastPlayedItemId } ?? items[0]
-        registerPlay(of: startItem)
-        playerVM.play(item: startItem, in: items)
-    }
-
-    private func playShuffle() {
-        let items = playableQueue.shuffled()
-        guard let first = items.first else { return }
-        registerPlay(of: first)
-        playerVM.play(item: first, in: items)
     }
 
     private var formattedTotal: String {
@@ -194,30 +127,14 @@ struct PlaylistDetailView: View {
         return "\(minutes) min"
     }
 
-    /// Records playback stats used by the Home page (recently played / popular)
-    /// and marks this playlist as the one currently playing.
+    /// Records playback stats used by the Home page and marks this playlist as
+    /// the one currently playing. Play count increments once per session.
     private func registerPlay(of item: MediaItem) {
         playlist.lastPlayedItemId = item.id
         playlist.lastPlayedDate = Date()
-        // Count once per listening session — tapping between songs of the
-        // already-playing playlist shouldn't inflate its popularity.
         if playerVM.currentPlaylistID != playlist.id {
             playlist.playCount += 1
         }
         playerVM.currentPlaylistID = playlist.id
-    }
-
-    private func moveItems(from: IndexSet, to: Int) {
-        var items = playlist.sortedItems
-        items.move(fromOffsets: from, toOffset: to)
-        for (index, pi) in items.enumerated() {
-            pi.sortOrder = index
-        }
-    }
-
-    private func renumber() {
-        for (index, pi) in playlist.sortedItems.enumerated() {
-            pi.sortOrder = index
-        }
     }
 }

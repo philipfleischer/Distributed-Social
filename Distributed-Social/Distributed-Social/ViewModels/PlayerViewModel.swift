@@ -37,6 +37,10 @@ final class PlayerViewModel {
     var queuedItems: [QueueEntry] { playbackService.queuedItems }
     /// Songs that come next naturally from the current context.
     var upNext: [QueueEntry] { playbackService.upNext }
+    /// Total number of songs in the active context queue.
+    var contextQueueCount: Int { playbackService.contextQueueCount }
+    /// 1-based position of the playing song within the context queue.
+    var contextQueuePosition: Int { playbackService.contextQueuePosition }
     /// Seconds trimmed from the end of each song (0 = off).
     var songFadeSeconds: Int { playbackService.songFadeSeconds }
 
@@ -83,6 +87,11 @@ final class PlayerViewModel {
             if !Task.isCancelled { self?.toast = nil }
         }
     }
+    func toggleCurrentItemFavorite() {
+        currentItem?.isFavorite.toggle()
+        Haptics.light()
+    }
+
     func jump(to entry: QueueEntry) { playbackService.jump(to: entry) }
     func clearQueue() { playbackService.clearManualQueue() }
     func removeFromUpNext(at offsets: IndexSet) { playbackService.removeFromUpNext(at: offsets) }
@@ -100,6 +109,12 @@ final class PlayerViewModel {
         let resumeAt = item.duration >= Constants.Playback.minDurationToResume
             ? item.lastPosition : 0
         playbackService.play(item: item, in: queue, startAt: resumeAt)
-        isFullPlayerPresented = true
+        // Defer by one run-loop tick so the mini player (which just became
+        // visible via currentItem changing) completes its first layout pass.
+        // Without this, matchedGeometryEffect has no source position and the
+        // full-player artwork gets pinned to the bottom of the screen.
+        Task { @MainActor in
+            isFullPlayerPresented = true
+        }
     }
 }

@@ -4,7 +4,7 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
 enum ImportState: Equatable {
     case idle
@@ -13,11 +13,12 @@ enum ImportState: Equatable {
     case error(String)
 }
 
+@Observable
 @MainActor
-final class ImportViewModel: ObservableObject {
-    @Published var isPickerPresented: Bool = false
-    @Published var isFolderPickerPresented: Bool = false
-    @Published var state: ImportState = .idle
+final class ImportViewModel {
+    var isPickerPresented: Bool = false
+    var isFolderPickerPresented: Bool = false
+    var state: ImportState = .idle
 
     private let fileImportService: FileImportServiceProtocol
 
@@ -70,11 +71,11 @@ final class ImportViewModel: ObservableObject {
             // Every file was a duplicate (folder re-imported) — creating an
             // empty playlist would only confuse.
             guard !result.items.isEmpty else {
-                flash(.success("All songs in “\(result.name)” are already in your library"))
+                flash(.success("All songs in \"\(result.name)\" are already in your library"))
                 return
             }
             createPlaylist(result.name, result.items)
-            flash(.success("Created playlist “\(result.name)” with \(result.items.count) song\(result.items.count == 1 ? "" : "s")"))
+            flash(.success("Created playlist \"\(result.name)\" with \(result.items.count) song\(result.items.count == 1 ? "" : "s")"))
         } catch {
             flash(.error(error.localizedDescription))
         }

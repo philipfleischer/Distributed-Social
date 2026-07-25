@@ -58,8 +58,16 @@ struct MiniPlayerView: View {
     private func row(for item: MediaItem, isCurrent: Bool) -> some View {
         HStack(spacing: 14) {
             if isCurrent {
-                MediaArtworkView(item: item, size: 48)
-                    .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace)
+                // Only participate in matchedGeometryEffect when the full player
+                // is not visible. With both views in the namespace simultaneously
+                // (full player open + mini at opacity-0), SwiftUI picks the wrong
+                // source frame on song changes and snaps the artwork to the bottom.
+                if playerVM.isFullPlayerPresented {
+                    MediaArtworkView(item: item, size: 48)
+                } else {
+                    MediaArtworkView(item: item, size: 48)
+                        .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace)
+                }
             } else {
                 MediaArtworkView(item: item, size: 48)
             }

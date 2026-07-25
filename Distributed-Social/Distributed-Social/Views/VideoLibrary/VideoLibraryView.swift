@@ -12,7 +12,7 @@ struct VideoLibraryView: View {
     @Environment(MediaLibraryService.self) private var mediaLibraryService
     @Query(filter: #Predicate<MediaItem> { $0.mediaTypeRaw == "video" },
            sort: \MediaItem.dateImported, order: .reverse) private var allItems: [MediaItem]
-    @State private var viewModel = VideoLibraryViewModel()
+    @State private var viewModel = AudioLibraryViewModel()
 
     @State private var itemForPlaylist: MediaItem?
 

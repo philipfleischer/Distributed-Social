@@ -12,10 +12,10 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(MediaLibraryService.self) private var mediaLibraryService
     @Environment(ThemeStore.self) private var themeStore
-    @StateObject private var importVM: ImportViewModel
+    @State private var importVM: ImportViewModel
 
     init(fileImportService: FileImportServiceProtocol) {
-        _importVM = StateObject(wrappedValue: ImportViewModel(fileImportService: fileImportService))
+        _importVM = State(initialValue: ImportViewModel(fileImportService: fileImportService))
     }
 
     private var theme: AppTheme { themeStore.theme }
@@ -27,7 +27,8 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        @Bindable var importVM = importVM
+        return NavigationStack {
             Form {
                 // MARK: Theme
                 Section("Theme") {
