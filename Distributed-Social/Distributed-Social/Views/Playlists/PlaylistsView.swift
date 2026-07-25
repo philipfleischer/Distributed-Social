@@ -26,6 +26,9 @@ struct PlaylistsView: View {
     @State private var showImagePicker = false
     @State private var pickedImage: PhotosPickerItem?
 
+    @State private var playlistToRename: Playlist?
+    @State private var renameText = ""
+
     private let columns = [
         GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16)
@@ -72,6 +75,19 @@ struct PlaylistsView: View {
             }
             .sheet(isPresented: $showCreateSheet) { createSheet }
             .photosPicker(isPresented: $showImagePicker, selection: $pickedImage, matching: .images)
+            .alert("Rename Playlist", isPresented: Binding(
+                get: { playlistToRename != nil },
+                set: { if !$0 { playlistToRename = nil } }
+            )) {
+                TextField("Playlist Name", text: $renameText)
+                Button("Rename") {
+                    if let playlist = playlistToRename, !renameText.isEmpty {
+                        playlist.name = renameText
+                    }
+                    playlistToRename = nil
+                }
+                Button("Cancel", role: .cancel) { playlistToRename = nil }
+            }
             .onChange(of: pickedImage) { _, newValue in
                 guard let newValue, let target = playlistForImage else { return }
                 Task {
@@ -108,6 +124,12 @@ struct PlaylistsView: View {
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button {
+                                renameText = playlist.name
+                                playlistToRename = playlist
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+                            Button {
                                 playlistForImage = playlist
                                 showImagePicker = true
                             } label: {
@@ -122,7 +144,7 @@ struct PlaylistsView: View {
                             }
                             Divider()
                             Button(role: .destructive) {
-                                modelContext.delete(playlist)
+                                mediaLibraryService.deletePlaylist(playlist, in: modelContext)
                             } label: {
                                 Label("Delete Playlist", systemImage: "trash")
                             }
@@ -151,11 +173,12 @@ struct PlaylistsView: View {
                             name: newName, mediaType: newType, in: modelContext)
                         showCreateSheet = false
                         newName = ""
+                        newType = .audio
                     }
                     .disabled(newName.isEmpty)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showCreateSheet = false; newName = "" }
+                    Button("Cancel") { showCreateSheet = false; newName = ""; newType = .audio }
                 }
             }
         }

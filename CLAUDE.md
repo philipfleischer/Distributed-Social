@@ -8,7 +8,7 @@
 
 ## App structure
 
-Three tabs: **Home** (greeting, Popular/Recently Played playlists, Favorites, Most Played, library boxes, global search), **Playlists** (cover grid), **Settings** (theme picker, import, About). The full player is an **overlay** above the TabView (not a sheet); the mini player island floats above the tab bar.
+Three tabs: **Home** (Popular/Recently Played playlists, Favorites, library boxes, global search), **Playlists** (cover grid), **Settings** (theme picker, import, About). The full player is an **overlay** above the TabView (not a sheet); the mini player island floats above the tab bar.
 
 ## Architecture rules
 
@@ -30,7 +30,7 @@ Two-part, Spotify-style (see `PlaybackService`): `manualQueue` (user FIFO, alway
 
 ## Repeat mode specification
 
-`off → all → one → off` on each tap. `.one` replays the current track once, then advances. The replay must go through `loadMedia` (reload from scratch) — seeking the ended `AVPlayerItem` and calling `play()` silently fails.
+`off → all → one → off` on each tap. Default is `.all` (songs play indefinitely). `.one` loops the current track forever; pressing Next/Previous skips out of the loop. The replay must go through `loadMedia` (reload from scratch) — seeking the ended `AVPlayerItem` and calling `play()` silently fails.
 
 ## Playback pitfalls (learned the hard way)
 

@@ -158,6 +158,10 @@ struct FullPlayerView: View {
                 color: theme.textPrimary,
                 lineHeight: 36
             )
+            // Force a fresh view (and fresh @State) on each song so the
+            // marquee offset resets instead of inheriting the previous song's
+            // slide position.
+            .id((item?.id.uuidString ?? "") + "-title")
             .padding(.horizontal)
             if let artist = item?.artist {
                 MarqueeText(
@@ -166,6 +170,7 @@ struct FullPlayerView: View {
                     color: theme.textSecondary,
                     lineHeight: 28
                 )
+                .id((item?.id.uuidString ?? "") + "-artist")
                 .padding(.horizontal)
             }
         }

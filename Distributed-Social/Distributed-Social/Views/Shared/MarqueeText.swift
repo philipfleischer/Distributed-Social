@@ -35,7 +35,6 @@ struct MarqueeText: View {
                 )
                 .offset(x: offsetX)
                 .frame(maxHeight: .infinity, alignment: .leading)
-                .onAppear { startSlidingIfNeeded(containerWidth: geo.size.width) }
                 .onDisappear { stopSliding() }
         }
         .frame(height: lineHeight)

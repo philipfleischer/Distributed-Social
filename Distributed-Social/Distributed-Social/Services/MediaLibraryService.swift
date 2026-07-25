@@ -34,6 +34,11 @@ final class MediaLibraryService: MediaLibraryServiceProtocol {
         context.insert(pi)
     }
 
+    func deletePlaylist(_ playlist: Playlist, in context: ModelContext) {
+        for pi in playlist.orderedItems ?? [] { context.delete(pi) }
+        context.delete(playlist)
+    }
+
     func deleteMediaItem(_ item: MediaItem, in context: ModelContext) {
         try? fileImportService.deleteFile(item)
         // Deleting a song must also delete its playlist rows — the default
@@ -47,6 +52,13 @@ final class MediaLibraryService: MediaLibraryServiceProtocol {
             renumber(playlist, excluding: removedIDs)
         }
         context.delete(item)
+    }
+
+    func cleanUpMissingFiles(in context: ModelContext) {
+        let all = (try? context.fetch(FetchDescriptor<MediaItem>())) ?? []
+        for item in all where item.isFileMissing {
+            deleteMediaItem(item, in: context)
+        }
     }
 
     /// Removes playlist rows orphaned by deletes that predate the cascade

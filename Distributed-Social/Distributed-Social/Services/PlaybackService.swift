@@ -41,11 +41,15 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     private(set) var duration: TimeInterval = 0
     private(set) var playbackSpeed: Float = 1.0
     private(set) var isShuffleEnabled: Bool = false
-    private(set) var repeatMode: RepeatMode = .off
+    private(set) var repeatMode: RepeatMode = .all
     /// Songs the user queued manually (FIFO) — play before the context resumes.
     private(set) var queuedItems: [QueueEntry] = []
     /// Songs that come next naturally from the current context.
     private(set) var upNext: [QueueEntry] = []
+    /// Total number of songs in the current context (playlist/library that was tapped into).
+    private(set) var contextQueueCount: Int = 0
+    /// 1-based position of the currently playing song in the context queue.
+    private(set) var contextQueuePosition: Int = 0
     /// When set, playback pauses automatically at this time.
     /// Seconds to trim from the end of each song (0 = off).
     private(set) var songFadeSeconds: Int = UserDefaults.standard.integer(forKey: "songFadeSeconds")
@@ -58,10 +62,16 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
     private var timeObserver: Any?
     private var itemEndObserver: NSObjectProtocol?
+    private var endBoundaryObserver: Any?
     private var resignObserver: NSObjectProtocol?
     private var terminateObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
+
+    /// The AVPlayerItem we most recently loaded — set before replaceCurrentItem
+    /// so the notification guard doesn't rely on player.currentItem, which may
+    /// be nil or already replaced when the notification fires on some OS versions.
+    private var currentAVPlayerItem: AVPlayerItem?
 
     private var originalQueue: [QueueEntry] = []  // unshuffled context order
     private var contextQueue: [QueueEntry] = []   // active context order
@@ -71,9 +81,6 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     /// Entry identity of the playing slot — survives shuffle re-ordering
     /// even when the same song appears twice in the context.
     private var currentEntryID: UUID?
-    /// Tracks whether `.one` repeat has already replayed the current track,
-    /// so each song plays exactly twice before advancing.
-    private var hasRepeatedCurrentItem = false
     /// Guards the missing-file auto-skip from looping forever when every
     /// remaining song's file is gone.
     private var missingSkipCount = 0
@@ -132,8 +139,39 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
             forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            self?.handlePlaybackEnd()
+        ) { [weak self] notification in
+            // Compare against our own tracked reference rather than
+            // player.currentItem, which may already be nil or replaced on
+            // some OS versions by the time the notification is delivered.
+            guard let self,
+                  let finishedItem = notification.object as? AVPlayerItem,
+                  finishedItem === self.currentAVPlayerItem,
+                  !self.hasFadeSkipped else { return }
+            self.hasFadeSkipped = true
+            self.handlePlaybackEnd()
+        }
+    }
+
+    /// Registers a boundary time observer that fires ~100 ms before the stored
+    /// track duration ends. Acts as a belt-and-suspenders backup for the
+    /// `didPlayToEndTimeNotification` path in case the OS delivers it late or
+    /// not at all (observed occasionally on iOS 26+).
+    private func setupEndBoundaryObserver(duration: TimeInterval) {
+        if let obs = endBoundaryObserver {
+            player.removeTimeObserver(obs)
+            endBoundaryObserver = nil
+        }
+        guard duration > 0.5 else { return }
+        let boundarySeconds = max(0.1, duration - 0.15)
+        let boundary = CMTime(seconds: boundarySeconds,
+                              preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        endBoundaryObserver = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: boundary)],
+            queue: .main
+        ) { [weak self] in
+            guard let self, !self.hasFadeSkipped else { return }
+            self.hasFadeSkipped = true
+            self.handlePlaybackEnd()
         }
     }
 
@@ -298,15 +336,12 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     private func handlePlaybackEnd() {
         // A finished song shouldn't "resume" at its final second next time.
         currentItem?.lastPosition = 0
-        if repeatMode == .one && !hasRepeatedCurrentItem, let item = currentItem {
-            // Replay by reloading the item from scratch — the same proven
-            // path as any track change. Seeking the *ended* player item and
-            // calling play() proved unreliable (the replay never started).
+        if repeatMode == .one, let item = currentItem {
+            // Reload from scratch — seeking an ended AVPlayerItem and calling
+            // play() silently fails.
             loadMedia(item, autoPlay: true, startAt: 0)
-            hasRepeatedCurrentItem = true // loadMedia resets the flag; set after
             return
         }
-        hasRepeatedCurrentItem = false
         advanceAfterEnd()
     }
 
@@ -321,7 +356,9 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         let nextIndex = currentIndex + 1
         if nextIndex < contextQueue.count {
             loadItem(at: nextIndex, autoPlay: true)
-        } else if repeatMode == .all && !contextQueue.isEmpty {
+        } else if (repeatMode == .all || repeatMode == .one) && !contextQueue.isEmpty {
+            // .one loops just like .all: every song plays twice, then the
+            // queue wraps so the cycle repeats from the beginning.
             loadItem(at: 0, autoPlay: true)
         } else {
             isPlaying = false
@@ -399,7 +436,11 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     var peekNext: MediaItem? {
         if let queued = manualQueue.first { return queued.item }
         guard !contextQueue.isEmpty else { return nil }
-        return contextQueue[(currentIndex + 1) % contextQueue.count].item
+        let nextIndex = currentIndex + 1
+        if nextIndex >= contextQueue.count {
+            return repeatMode == .off ? nil : contextQueue[0].item
+        }
+        return contextQueue[nextIndex].item
     }
 
     /// The song a swipe-to-previous would play right now.
@@ -543,6 +584,8 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         } else {
             upNext = []
         }
+        contextQueueCount = contextQueue.count
+        contextQueuePosition = contextQueue.isEmpty ? 0 : min(currentIndex + 1, contextQueue.count)
     }
 
     /// Detaches an item that is about to be deleted from the library:
@@ -573,6 +616,11 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
     /// Stops playback entirely and hides the players (mini player shows
     /// only while currentItem is set).
     private func clearPlayback() {
+        if let obs = endBoundaryObserver {
+            player.removeTimeObserver(obs)
+            endBoundaryObserver = nil
+        }
+        currentAVPlayerItem = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
         currentItem = nil
@@ -620,7 +668,6 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         missingSkipCount = 0
 
         currentItem = item
-        hasRepeatedCurrentItem = false
         hasFadeSkipped = false
 
         // Reset published time state immediately so the scrubber snaps to the
@@ -630,7 +677,11 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
         duration = item.duration
 
         let playerItem = AVPlayerItem(url: item.localURL)
+        // Set our own reference BEFORE replaceCurrentItem so the notification
+        // guard is accurate regardless of player.currentItem's timing.
+        currentAVPlayerItem = playerItem
         player.replaceCurrentItem(with: playerItem)
+        setupEndBoundaryObserver(duration: item.duration)
 
         if position > 0 {
             let time = CMTime(seconds: position, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
@@ -647,6 +698,8 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
                 let seconds = cmDuration.seconds.isNaN ? 0 : cmDuration.seconds
                 self.duration = seconds
                 item.duration = seconds
+                // Re-register boundary with the now-known real duration.
+                self.setupEndBoundaryObserver(duration: seconds)
                 self.updateNowPlayingInfo()
             }
         }
@@ -662,6 +715,7 @@ final class PlaybackService: NSObject, PlaybackServiceProtocol {
 
     deinit {
         if let obs = timeObserver { player.removeTimeObserver(obs) }
+        if let obs = endBoundaryObserver { player.removeTimeObserver(obs) }
         if let obs = itemEndObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = resignObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = terminateObserver { NotificationCenter.default.removeObserver(obs) }

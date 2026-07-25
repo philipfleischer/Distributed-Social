@@ -17,10 +17,14 @@ struct QueueSheet: View {
 
     private var theme: AppTheme { themeStore.theme }
 
+    private var hasAnything: Bool {
+        !playerVM.queuedItems.isEmpty || !playerVM.upNext.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             Group {
-                if playerVM.queuedItems.isEmpty && playerVM.upNext.isEmpty {
+                if !hasAnything && playerVM.currentItem == nil {
                     ContentUnavailableView(
                         "Queue Is Empty",
                         systemImage: "list.number",
@@ -45,12 +49,22 @@ struct QueueSheet: View {
                             }
                         }
                         if !playerVM.upNext.isEmpty {
-                            Section("Next Up") {
+                            Section {
                                 ForEach(playerVM.upNext) { entry in
                                     queueRow(for: entry, isManual: false)
                                 }
                                 .onDelete { playerVM.removeFromUpNext(at: $0) }
                                 .onMove { playerVM.moveUpNext(fromOffsets: $0, toOffset: $1) }
+                            } header: {
+                                nextUpHeader
+                            }
+                        } else if playerVM.currentItem != nil {
+                            // At the end of the context queue — clarify rather than
+                            // showing a misleading "empty" state.
+                            Section {
+                                EmptyView()
+                            } header: {
+                                nextUpHeader
                             }
                         }
                     }
@@ -62,9 +76,7 @@ struct QueueSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    if !(playerVM.queuedItems.isEmpty && playerVM.upNext.isEmpty) {
-                        EditButton()
-                    }
+                    if hasAnything { EditButton() }
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
@@ -72,6 +84,23 @@ struct QueueSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private var nextUpHeader: some View {
+        let count = playerVM.contextQueueCount
+        let pos = playerVM.contextQueuePosition
+        HStack {
+            if count > 0 {
+                Text("Next Up")
+                Spacer()
+                Text("\(pos) of \(count)")
+                    .font(.caption)
+                    .foregroundStyle(theme.textSecondary)
+            } else {
+                Text("Next Up")
+            }
+        }
     }
 
     private func queueRow(for entry: QueueEntry, isManual: Bool) -> some View {

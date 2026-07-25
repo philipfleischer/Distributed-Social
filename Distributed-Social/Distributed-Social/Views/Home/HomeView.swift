@@ -21,17 +21,17 @@ struct HomeView: View {
     private var theme: AppTheme { themeStore.theme }
 
     private var recentlyPlayed: [Playlist] {
-        playlists
+        Array(playlists
             .filter { $0.lastPlayedDate != nil }
             .sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
-            .prefix(6).map { $0 }
+            .prefix(6))
     }
 
     private var popular: [Playlist] {
-        playlists
+        Array(playlists
             .filter { $0.playCount > 0 }
             .sorted { $0.playCount > $1.playCount }
-            .prefix(6).map { $0 }
+            .prefix(6))
     }
 
     /// Single pass through allItems to get both counts simultaneously.
@@ -48,9 +48,9 @@ struct HomeView: View {
     /// Six favorites chosen pseudo-randomly, stable within a launch but
     /// different on the next one — surfaces fresh favorites every run.
     private var favoritesPreview: [MediaItem] {
-        favorites
+        Array(favorites
             .sorted { sessionRank(of: $0.id) < sessionRank(of: $1.id) }
-            .prefix(6).map { $0 }
+            .prefix(6))
     }
 
     private func sessionRank(of id: UUID) -> Int {
