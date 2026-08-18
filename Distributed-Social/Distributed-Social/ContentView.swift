@@ -22,15 +22,12 @@ struct ContentView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             TabView(selection: $selectedTab) {
-                HomeView()
-                    .tabItem { Label("Home", systemImage: "house.fill") }
-                    .tag(0)
                 PlaylistsView()
                     .tabItem { Label("Playlists", systemImage: "list.bullet") }
-                    .tag(1)
+                    .tag(0)
                 SettingsView(fileImportService: fileImportService)
                     .tabItem { Label("Settings", systemImage: "gear") }
-                    .tag(2)
+                    .tag(1)
             }
 
             // Mini player: always in the hierarchy when something is loaded so

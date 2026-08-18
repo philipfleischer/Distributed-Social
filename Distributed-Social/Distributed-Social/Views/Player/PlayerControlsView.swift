@@ -16,6 +16,7 @@ struct PlayerControlsView: View {
     /// carousel.  Falls back to direct service calls when nil (e.g. previews).
     var onNextTrack: (() -> Void)? = nil
     var onPreviousTrack: (() -> Void)? = nil
+    var onShowQueue: (() -> Void)? = nil
 
     private var theme: AppTheme { themeStore.theme }
     private var inactive: Color { Color.gray }
@@ -46,18 +47,10 @@ struct PlayerControlsView: View {
                 } label: {
                     Image(systemName: "forward.fill").font(.title)
                 }
-                Button { playerVM.cycleRepeatMode() } label: {
-                    ZStack {
-                        Image(systemName: playerVM.repeatMode.systemImage)
-                            .font(.title3)
-                            .foregroundStyle(playerVM.repeatMode.isActive ? theme.textPrimary : inactive)
-                        if playerVM.repeatMode == .one {
-                            Circle()
-                                .fill(theme.textPrimary)
-                                .frame(width: 5, height: 5)
-                                .offset(y: 14)
-                        }
-                    }
+                Button { onShowQueue?() } label: {
+                    Image(systemName: "list.number")
+                        .font(.title3)
+                        .foregroundStyle(theme.textPrimary)
                 }
             }
             .foregroundStyle(theme.textPrimary)
