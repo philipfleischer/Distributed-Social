@@ -81,7 +81,8 @@ struct FullPlayerView: View {
                     commitSwipe(to: carouselWidth > 0 ? carouselWidth : 393) {
                         playerVM.swipeToPreviousTrack()
                     }
-                }
+                },
+                onShowQueue: { showQueue = true }
             )
 
             Spacer(minLength: 0)
@@ -258,7 +259,7 @@ struct FullPlayerView: View {
 
     // MARK: - Header
 
-    /// Queue and "⋮" on the right; AirPlay lives inside the "⋮" menu.
+    /// "⋮" on the right; AirPlay lives inside the "⋮" menu.
     private var header: some View {
         HStack {
             Button {
@@ -270,14 +271,6 @@ struct FullPlayerView: View {
             }
 
             Spacer()
-
-            Button {
-                showQueue = true
-            } label: {
-                Image(systemName: "list.number")
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 44, height: 44)
-            }
 
             Menu {
                 if let item = playerVM.currentItem {

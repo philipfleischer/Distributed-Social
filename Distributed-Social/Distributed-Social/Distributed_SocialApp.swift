@@ -7,9 +7,20 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
+
+private class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        return .portrait
+    }
+}
 
 @main
 struct Distributed_SocialApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     private let deps = AppDependencies()
     @State private var themeStore = ThemeStore()
     @Environment(\.scenePhase) private var scenePhase

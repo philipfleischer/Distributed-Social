@@ -27,6 +27,7 @@ final class AudioLibraryViewModel {
         if !searchText.isEmpty {
             items = items.filter {
                 $0.displayName.localizedCaseInsensitiveContains(searchText)
+                    || ($0.artist?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
         switch sortOrder {
