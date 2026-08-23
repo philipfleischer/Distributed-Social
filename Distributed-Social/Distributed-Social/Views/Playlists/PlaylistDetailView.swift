@@ -43,7 +43,11 @@ struct PlaylistDetailView: View {
                 Section {
                     ForEach(visibleItems) { pi in
                         if let item = pi.mediaItem {
-                            row(for: pi, item: item)
+                            PlaylistDetailRowView(pi: pi, item: item) {
+                                let queue = playableQueue
+                                registerPlay(of: item)
+                                playerVM.play(item: item, in: queue)
+                            }
                         }
                     }
                 } header: {
@@ -57,15 +61,53 @@ struct PlaylistDetailView: View {
         .contentMargins(.bottom, 120, for: .scrollContent)
         .summerBackground()
         .navigationTitle(playlist.name)
-        .searchable(text: $searchText, prompt: "Search in playlist")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search in playlist")
     }
 
-    // MARK: - Rows
+    // MARK: - Helpers
 
-    @ViewBuilder
-    private func row(for pi: PlaylistItem, item: MediaItem) -> some View {
-        let isCurrent = playerVM.currentItem?.id == item.id
-        let isMissing = item.isFileMissing
+    /// Songs in playlist order whose files still exist. Evaluated on tap, not during render.
+    private var playableQueue: [MediaItem] {
+        playlist.sortedItems.compactMap { $0.mediaItem }.filter { !$0.isFileMissing }
+    }
+
+    private var formattedTotal: String {
+        let minutes = Int(totalDuration / 60)
+        if minutes >= 60 {
+            return "\(minutes / 60) hr \(minutes % 60) min"
+        }
+        return "\(minutes) min"
+    }
+
+    /// Records playback stats used by the Home page and marks this playlist as
+    /// the one currently playing. Play count increments once per session.
+    private func registerPlay(of item: MediaItem) {
+        playlist.lastPlayedItemId = item.id
+        playlist.lastPlayedDate = Date()
+        if playerVM.currentPlaylistID != playlist.id {
+            playlist.playCount += 1
+        }
+        playerVM.currentPlaylistID = playlist.id
+    }
+}
+
+// MARK: - Row view
+
+/// Isolated row that reads playerVM directly, so PlaylistDetailView.body
+/// is not re-evaluated (and sortedItems not re-sorted) on every play/pause.
+private struct PlaylistDetailRowView: View {
+    let pi: PlaylistItem
+    let item: MediaItem
+    let onPlay: () -> Void
+
+    @Environment(PlayerViewModel.self) private var playerVM
+    @Environment(ThemeStore.self) private var themeStore
+
+    private var theme: AppTheme { themeStore.theme }
+    private var isCurrent: Bool { playerVM.currentItem?.id == item.id }
+    private var isMissing: Bool { item.isFileMissing }
+
+    var body: some View {
         HStack(spacing: 10) {
             Text("\(pi.sortOrder + 1)")
                 .foregroundStyle(theme.textSecondary)
@@ -102,39 +144,11 @@ struct PlaylistDetailView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             guard !isMissing else { return }
-            let queue = playableQueue
-            registerPlay(of: item)
-            playerVM.play(item: item, in: queue)
+            onPlay()
         }
         .swipeToQueue(enabled: !isMissing) {
             playerVM.addToQueue(item)
         }
         .listRowBackground(Color.clear)
-    }
-
-    // MARK: - Helpers
-
-    /// Songs in playlist order whose files still exist. Evaluated on tap, not during render.
-    private var playableQueue: [MediaItem] {
-        playlist.sortedItems.compactMap { $0.mediaItem }.filter { !$0.isFileMissing }
-    }
-
-    private var formattedTotal: String {
-        let minutes = Int(totalDuration / 60)
-        if minutes >= 60 {
-            return "\(minutes / 60) hr \(minutes % 60) min"
-        }
-        return "\(minutes) min"
-    }
-
-    /// Records playback stats used by the Home page and marks this playlist as
-    /// the one currently playing. Play count increments once per session.
-    private func registerPlay(of item: MediaItem) {
-        playlist.lastPlayedItemId = item.id
-        playlist.lastPlayedDate = Date()
-        if playerVM.currentPlaylistID != playlist.id {
-            playlist.playCount += 1
-        }
-        playerVM.currentPlaylistID = playlist.id
     }
 }

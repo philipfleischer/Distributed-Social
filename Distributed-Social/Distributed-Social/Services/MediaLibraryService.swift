@@ -54,9 +54,22 @@ final class MediaLibraryService: MediaLibraryServiceProtocol {
         context.delete(item)
     }
 
-    func cleanUpMissingFiles(in context: ModelContext) {
+    func cleanUpMissingFiles(in context: ModelContext) async {
+        let mediaDir = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Constants.Directories.media)
+
+        // One directory scan off the main thread instead of one fileExists()
+        // call per item on the main thread — cuts startup blocking from O(n)
+        // file-system calls to a single listing + O(n) set lookups.
+        let existingFilenames: Set<String> = await Task.detached(priority: .background) {
+            let urls = (try? FileManager.default.contentsOfDirectory(
+                at: mediaDir, includingPropertiesForKeys: nil)) ?? []
+            return Set(urls.map(\.lastPathComponent))
+        }.value
+
         let all = (try? context.fetch(FetchDescriptor<MediaItem>())) ?? []
-        for item in all where item.isFileMissing {
+        for item in all where !existingFilenames.contains(item.filename) {
             deleteMediaItem(item, in: context)
         }
     }

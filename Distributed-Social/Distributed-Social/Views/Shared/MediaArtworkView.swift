@@ -37,11 +37,8 @@ struct MediaArtworkView: View {
 
     /// Stable per-item value used to vary the decorative shape.
     private var seed: Int {
-        var value = 0
-        for scalar in item.id.uuidString.unicodeScalars {
-            value = (value &* 17 &+ Int(scalar.value)) & 0xFFFF
-        }
-        return value
+        let u = item.id.uuid
+        return Int(u.0) ^ Int(u.1 &* 17) ^ Int(u.2 &* 31)
     }
 
     var body: some View {

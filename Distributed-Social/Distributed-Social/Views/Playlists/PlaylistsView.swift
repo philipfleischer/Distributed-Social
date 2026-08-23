@@ -12,9 +12,10 @@ import SwiftData
 import PhotosUI
 
 struct PlaylistsView: View {
+    let fileImportService: FileImportServiceProtocol
+
     @Environment(\.modelContext) private var modelContext
     @Environment(MediaLibraryService.self) private var mediaLibraryService
-    @Environment(PlayerViewModel.self) private var playerVM
     @Environment(ThemeStore.self) private var themeStore
     @Query(sort: \Playlist.name) private var playlists: [Playlist]
     @Query(filter: #Predicate<MediaItem> { $0.mediaTypeRaw == "audio" }) private var allAudioItems: [MediaItem]
@@ -35,6 +36,9 @@ struct PlaylistsView: View {
     @State private var selectedPlaylists: Set<UUID> = []
     @State private var combinedItems: [MediaItem] = []
     @State private var showCombinedPlaylist = false
+
+    @State private var showSettings = false
+    @State private var isAtTop = true
 
     private let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -70,9 +74,14 @@ struct PlaylistsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 120)
             }
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                geo.contentOffset.y + geo.contentInsets.top <= 10
+            } action: { _, newIsAtTop in
+                withAnimation(.easeInOut(duration: 0.2)) { isAtTop = newIsAtTop }
+            }
             .summerBackground()
-            .navigationTitle("Playlists")
-            .searchable(text: $searchText, prompt: "Playlist name")
+            .navigationTitle("")
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Playlist name")
             .toolbar {
                 if isSelectMode {
                     ToolbarItem(placement: .topBarLeading) {
@@ -96,6 +105,13 @@ struct PlaylistsView: View {
                         .disabled(selectedPlaylists.isEmpty)
                     }
                 } else {
+                    if isAtTop {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { showSettings = true } label: {
+                                Image(systemName: "gear")
+                            }
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Select") { isSelectMode = true }
                     }
@@ -108,6 +124,9 @@ struct PlaylistsView: View {
             }
             .navigationDestination(isPresented: $showCombinedPlaylist) {
                 CombinedPlaylistView(items: combinedItems)
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView(fileImportService: fileImportService)
             }
             .sheet(isPresented: $showCreateSheet) { createSheet }
             .photosPicker(isPresented: $showImagePicker, selection: $pickedImage, matching: .images)
@@ -227,11 +246,8 @@ struct PlaylistsView: View {
             }
         } label: {
             ZStack(alignment: .topLeading) {
-                PlaylistTileView(
-                    playlist: playlist,
-                    isActive: playerVM.currentPlaylistID == playlist.id
-                )
-                .opacity(isSelected ? 1.0 : 0.55)
+                PlaylistTileView(playlist: playlist)
+                    .opacity(isSelected ? 1.0 : 0.55)
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
@@ -247,10 +263,7 @@ struct PlaylistsView: View {
         NavigationLink {
             PlaylistDetailView(playlist: playlist)
         } label: {
-            PlaylistTileView(
-                playlist: playlist,
-                isActive: playerVM.currentPlaylistID == playlist.id
-            )
+            PlaylistTileView(playlist: playlist)
         }
         .buttonStyle(.plain)
         .contextMenu {

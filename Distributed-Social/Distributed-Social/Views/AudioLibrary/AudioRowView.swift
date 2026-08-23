@@ -7,14 +7,15 @@ import SwiftUI
 
 struct AudioRowView<MenuContent: View>: View {
     let item: MediaItem
-    let isCurrent: Bool
-    let isPlaying: Bool
     var isMissing: Bool = false
     let onPlay: () -> Void
     @ViewBuilder let menuContent: () -> MenuContent
 
+    @Environment(PlayerViewModel.self) private var playerVM
     @Environment(ThemeStore.self) private var themeStore
     private var theme: AppTheme { themeStore.theme }
+    private var isCurrent: Bool { playerVM.currentItem?.id == item.id }
+    private var isPlaying: Bool { isCurrent && playerVM.isPlaying }
 
     var body: some View {
         HStack(spacing: 14) {

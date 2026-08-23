@@ -284,11 +284,7 @@ struct HomeView: View {
                         NavigationLink {
                             PlaylistDetailView(playlist: playlist)
                         } label: {
-                            PlaylistTileView(
-                                playlist: playlist,
-                                size: 140,
-                                isActive: playerVM.currentPlaylistID == playlist.id
-                            )
+                            PlaylistTileView(playlist: playlist, size: 140)
                         }
                         .buttonStyle(.plain)
                     }
