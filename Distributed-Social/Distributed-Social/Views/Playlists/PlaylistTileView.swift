@@ -12,60 +12,48 @@ import SwiftUI
 struct PlaylistTileView: View {
     let playlist: Playlist
     var size: CGFloat? = nil        // nil → flexible (grid) sizing
-    var isActive: Bool = false      // true when this playlist is playing
 
+    @Environment(PlayerViewModel.self) private var playerVM
     @Environment(ThemeStore.self) private var themeStore
+    @Environment(\.displayScale) private var displayScale
+
     private var theme: AppTheme { themeStore.theme }
+    private var isActive: Bool { playerVM.currentPlaylistID == playlist.id }
 
     private var seed: Int {
-        var value = 0
-        for scalar in playlist.id.uuidString.unicodeScalars {
-            value = (value &* 17 &+ Int(scalar.value)) & 0xFFFF
-        }
-        return value
+        let u = playlist.id.uuid
+        return Int(u.0) ^ Int(u.1 &* 17) ^ Int(u.2 &* 31)
     }
 
-    @Environment(\.displayScale) private var displayScale
-    /// Freshly decoded cover, tagged with the cache key it belongs to so a
-    /// reused tile never shows another playlist's cover.
     @State private var decodedCover: (key: String, image: UIImage?)? = nil
-
-    /// Covers render at grid-tile size at most; decode once at this size.
     private static let coverPointSize: CGFloat = 200
 
-    /// Custom cover if chosen, otherwise the first available song artwork.
-    /// Uses `orderedItems` (no sort) since we only need the first artwork,
-    /// not a sorted list — avoids an O(n log n) sort on every render.
-    private var coverData: Data? {
-        if let data = playlist.imageData { return data }
-        return (playlist.orderedItems ?? []).compactMap { $0.mediaItem?.artworkData }.first
-    }
-
-    /// Identity of whatever the cover shows. Changing the custom image or
-    /// the underlying songs produces a new key, so stale cache entries are
-    /// simply never looked up again.
-    private var coverKey: String {
+    /// Single pass: returns both the cache key and the raw data for the cover
+    /// (custom image → first song artwork → nil). Using a lazy loop avoids the
+    /// two separate O(n) traversals that `coverKey` and `coverData` used to do.
+    private var coverSource: (key: String, data: Data?) {
         if let data = playlist.imageData {
-            return "pl-\(playlist.id.uuidString)-custom-\(data.count)"
+            return ("pl-\(playlist.id.uuidString)-custom-\(data.count)", data)
         }
-        if let item = (playlist.orderedItems ?? []).compactMap(\.mediaItem).first(where: { $0.artworkData != nil }) {
-            return "item-\(item.id.uuidString)"
+        for item in playlist.orderedItems ?? [] {
+            if let mediaItem = item.mediaItem, let data = mediaItem.artworkData {
+                return ("item-\(mediaItem.id.uuidString)", data)
+            }
         }
-        return "pl-\(playlist.id.uuidString)-generated"
+        return ("pl-\(playlist.id.uuidString)-generated", nil)
     }
 
-    /// Cached decode if available; decoding never happens in the body.
-    private var resolvedCover: UIImage? {
-        if let hit = ArtworkThumbnailCache.image(forKey: coverKey, pointSize: Self.coverPointSize) {
-            return hit
-        }
-        if let decodedCover, decodedCover.key == coverKey { return decodedCover.image }
+    private func resolvedCoverImage(forKey key: String) -> UIImage? {
+        if let hit = ArtworkThumbnailCache.image(forKey: key, pointSize: Self.coverPointSize) { return hit }
+        if let dc = decodedCover, dc.key == key { return dc.image }
         return nil
     }
 
     var body: some View {
+        let cs = coverSource
+        let resolvedImage = resolvedCoverImage(forKey: cs.key)
         VStack(alignment: .leading, spacing: 8) {
-            cover
+            coverView(image: resolvedImage)
                 .aspectRatio(1, contentMode: .fit)
                 .frame(width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -87,24 +75,23 @@ struct PlaylistTileView: View {
                 .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
 
             MarqueeText(text: playlist.name, font: .headline, color: theme.textPrimary)
-            // Counting doesn't need the sorted order — skip the sort.
             let count = playlist.orderedItems?.count ?? 0
             Text("\(count) item\(count == 1 ? "" : "s")")
                 .font(.subheadline)
                 .foregroundStyle(theme.textSecondary)
         }
-        .task(id: coverKey) {
-            guard resolvedCover == nil, let data = coverData else { return }
+        .task(id: cs.key) {
+            guard resolvedCoverImage(forKey: cs.key) == nil, let data = cs.data else { return }
             let image = await ArtworkThumbnailCache.loadThumbnail(
-                forKey: coverKey, data: data,
+                forKey: cs.key, data: data,
                 pointSize: Self.coverPointSize, scale: displayScale)
-            decodedCover = (coverKey, image)
+            decodedCover = (cs.key, image)
         }
     }
 
     @ViewBuilder
-    private var cover: some View {
-        if let uiImage = resolvedCover {
+    private func coverView(image: UIImage?) -> some View {
+        if let uiImage = image {
             Color.clear
                 .overlay(
                     Image(uiImage: uiImage)
@@ -112,24 +99,28 @@ struct PlaylistTileView: View {
                         .scaledToFill()
                 )
         } else {
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color.artworkHue(for: playlist.id),
-                        Color.artworkHue(for: playlist.id, offset: 0.16)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+            generatedCover
+        }
+    }
 
-                decorativeShape
-                    .foregroundStyle(.white.opacity(0.30))
+    private var generatedCover: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.artworkHue(for: playlist.id),
+                    Color.artworkHue(for: playlist.id, offset: 0.16)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
 
-                Image(systemName: playlist.mediaType.systemImage)
-                    .font(.system(size: 40, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
-            }
+            decorativeShape
+                .foregroundStyle(.white.opacity(0.30))
+
+            Image(systemName: playlist.mediaType.systemImage)
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
         }
     }
 

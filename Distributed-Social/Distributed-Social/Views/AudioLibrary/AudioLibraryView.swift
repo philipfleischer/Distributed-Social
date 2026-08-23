@@ -60,14 +60,11 @@ struct AudioLibraryView: View {
 
                     ForEach(items) { item in
                         let isMissing = item.isFileMissing
-                        let isCurrent = playerVM.currentItem?.id == item.id
                         if isSelectMode {
                             selectRow(for: item)
                         } else {
                             AudioRowView(
                                 item: item,
-                                isCurrent: isCurrent,
-                                isPlaying: isCurrent && playerVM.isPlaying,
                                 isMissing: isMissing,
                                 onPlay: { handlePlay(item, in: items) }
                             ) {
