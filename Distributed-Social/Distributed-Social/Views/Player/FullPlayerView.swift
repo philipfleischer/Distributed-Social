@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct FullPlayerView: View {
     let artworkNamespace: Namespace.ID
@@ -60,10 +61,9 @@ struct FullPlayerView: View {
                         }
                     }
                     .frame(width: width)
-                    .onAppear { carouselWidth = width }
-                    .onChange(of: width) { _, newWidth in carouselWidth = newWidth }
                 }
                 .frame(height: 430)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { carouselWidth = $0 }
                 .clipped()
                 .contentShape(Rectangle())
                 .gesture(playerGesture)

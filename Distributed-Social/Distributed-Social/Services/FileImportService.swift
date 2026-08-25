@@ -38,8 +38,11 @@ final class FileImportService: FileImportServiceProtocol {
         let accessed = sourceURL.startAccessingSecurityScopedResource()
         defer { if accessed { sourceURL.stopAccessingSecurityScopedResource() } }
 
-        let existingFiles = currentMediaFiles()
-        if Self.isDuplicate(sourceURL, in: existingFiles) {
+        // Build the duplicate index off the main thread.
+        let index = await Task.detached(priority: .userInitiated) { [self] in
+            Self.buildDuplicateIndex(from: self.currentMediaFiles())
+        }.value
+        if Self.isDuplicate(sourceURL, index: index) {
             throw FileImportError.duplicate
         }
 
@@ -63,27 +66,35 @@ final class FileImportService: FileImportServiceProtocol {
 
         guard !fileURLs.isEmpty else { throw FileImportError.noMediaFiles }
 
-        // Snapshot the existing library before any parallel write begins so
-        // every task uses the same baseline for duplicate detection.
-        let existingFiles = currentMediaFiles()
+        // Build the duplicate index once, off the main thread, before parallel
+        // imports begin — each task does an O(1) lookup instead of O(n) scan.
+        let existingIndex = await Task.detached(priority: .userInitiated) { [self] in
+            Self.buildDuplicateIndex(from: self.currentMediaFiles())
+        }.value
+
+        // Thin wrapper so MediaItem (a non-Sendable PersistentModel) can cross
+        // the task-group boundary. Safe here because copyAndProcess creates
+        // the item before it is inserted into any ModelContext, and all tasks
+        // run cooperatively on the main actor.
+        struct Box: @unchecked Sendable { let item: MediaItem }
 
         onProgress(0, fileURLs.count)
         var items: [MediaItem] = []
         var completed = 0
 
-        await withTaskGroup(of: MediaItem?.self) { group in
+        await withTaskGroup(of: Box?.self) { group in
             for fileURL in fileURLs {
                 group.addTask {
                     let inner = fileURL.startAccessingSecurityScopedResource()
                     defer { if inner { fileURL.stopAccessingSecurityScopedResource() } }
-                    guard !Self.isDuplicate(fileURL, in: existingFiles) else { return nil }
-                    return try? await self.copyAndProcess(sourceURL: fileURL)
+                    guard !Self.isDuplicate(fileURL, index: existingIndex) else { return nil }
+                    return (try? await self.copyAndProcess(sourceURL: fileURL)).map { Box(item: $0) }
                 }
             }
             for await result in group {
                 completed += 1
                 onProgress(completed, fileURLs.count)
-                if let item = result { items.append(item) }
+                if let box = result { items.append(box.item) }
             }
         }
 
@@ -101,61 +112,81 @@ final class FileImportService: FileImportServiceProtocol {
 
     /// One-time backfill: items imported before tag extraction existed get
     /// their embedded title/artist/cover art read now. Tracked in
-    /// UserDefaults so it only ever runs once.
+    /// UserDefaults so it only ever runs once. Processed in batches so
+    /// artwork data can be released between batches under memory pressure.
     func backfillMetadataIfNeeded(in context: ModelContext) async {
         let key = "metadataBackfillDone.v1"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
 
         let items = (try? context.fetch(FetchDescriptor<MediaItem>())) ?? []
-        for item in items where item.artist == nil && item.artworkData == nil {
-            guard !item.isFileMissing else { continue }
-            let asset = AVURLAsset(url: item.localURL)
-            let tags = await loadEmbeddedTags(from: asset)
-            if let title = tags.title { item.displayName = title }
-            item.artist = tags.artist
-            item.artworkData = await displaySizedArtwork(tags.artwork)
+        let batchSize = 50
+        for batchStart in stride(from: 0, to: items.count, by: batchSize) {
+            let batch = items[batchStart..<min(batchStart + batchSize, items.count)]
+            for item in batch where item.artist == nil && item.artworkData == nil {
+                guard !item.isFileMissing else { continue }
+                let asset = AVURLAsset(url: item.localURL)
+                let tags = await loadEmbeddedTags(from: asset)
+                if let title = tags.title { item.displayName = title }
+                item.artist = tags.artist
+                item.artworkData = await displaySizedArtwork(tags.artwork)
+            }
+            try? context.save()
         }
         UserDefaults.standard.set(true, forKey: key)
     }
 
     /// One-time downscale of artwork that older imports stored at full
     /// size — shrinks the database and speeds up first decode. Tracked in
-    /// UserDefaults so it only ever runs once.
+    /// UserDefaults so it only ever runs once. Processed in batches so
+    /// artwork data can be released between batches under memory pressure.
     func downscaleArtworkIfNeeded(in context: ModelContext) async {
         let key = "artworkDownscaleDone.v1"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
 
         let items = (try? context.fetch(FetchDescriptor<MediaItem>())) ?? []
-        for item in items {
-            guard let data = item.artworkData else { continue }
-            if let scaled = await ArtworkThumbnailCache.downscaledCoverData(from: data),
-               scaled.count < data.count {
-                item.artworkData = scaled
+        let batchSize = 50
+        for batchStart in stride(from: 0, to: items.count, by: batchSize) {
+            let batch = items[batchStart..<min(batchStart + batchSize, items.count)]
+            for item in batch {
+                guard let data = item.artworkData else { continue }
+                if let scaled = await ArtworkThumbnailCache.downscaledCoverData(from: data),
+                   scaled.count < data.count {
+                    item.artworkData = scaled
+                }
             }
+            try? context.save()
         }
         UserDefaults.standard.set(true, forKey: key)
     }
 
     // MARK: - Private helpers
 
-    private func currentMediaFiles() -> [URL] {
+    nonisolated private func currentMediaFiles() -> [URL] {
         (try? FileManager.default.contentsOfDirectory(
             at: mediaDirectory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
     }
 
-    /// A file with the same original name and byte size as an existing import
-    /// is treated as the same song. Every import is stored as
-    /// "<UUID>-<originalName>", so the original name is everything after the
-    /// 37-char UUID prefix.
-    private static func isDuplicate(_ sourceURL: URL, in existingFiles: [URL]) -> Bool {
+    /// Builds a strippedName → [sizes] lookup from the existing library so
+    /// each duplicate check is O(1) instead of O(n). Every stored file is
+    /// named "<UUID>-<originalName>", so the original name is everything after
+    /// the 37-char UUID prefix.
+    nonisolated private static func buildDuplicateIndex(from existingFiles: [URL]) -> [String: [Int]] {
+        var index: [String: [Int]] = [:]
+        for url in existingFiles {
+            let name = url.lastPathComponent
+            guard name.count > 37 else { continue }
+            let stripped = String(name.dropFirst(37))
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            index[stripped, default: []].append(size)
+        }
+        return index
+    }
+
+    nonisolated private static func isDuplicate(_ sourceURL: URL,
+                                                index: [String: [Int]]) -> Bool {
         guard let sourceSize = try? sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize
         else { return false }
-        let name = sourceURL.lastPathComponent
-        return existingFiles.contains { url in
-            url.lastPathComponent.count > 37
-                && url.lastPathComponent.dropFirst(37) == name
-                && (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) == sourceSize
-        }
+        return index[sourceURL.lastPathComponent]?.contains(sourceSize) ?? false
     }
 
     /// Copies the file to the media directory, reads embedded tags, and builds

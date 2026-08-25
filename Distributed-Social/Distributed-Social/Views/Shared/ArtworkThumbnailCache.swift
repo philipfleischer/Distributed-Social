@@ -46,16 +46,19 @@ enum ArtworkThumbnailCache {
         // 1. Memory cache (synchronous, main thread is fine here)
         if let hit = images.object(forKey: mk) { return hit }
 
+        // Capture the cache directory URL (Sendable) on the main actor so the
+        // detached task never needs to access actor-isolated state.
+        let cacheDir = diskCacheDir
         let maxPixel = pointSize * max(scale, 1)
         let decoded = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             // 2. Disk cache — reading a small pre-scaled JPEG is ~5 ms
-            if let cached = readFromDisk(memKey: mk) { return cached }
+            if let cached = readFromDisk(memKey: mk, in: cacheDir) { return cached }
 
             // 3. Full ImageIO decode from source artwork data
             guard let image = downsample(data: data, maxPixel: maxPixel) else { return nil }
 
             // 4. Persist so subsequent launches skip step 3
-            writeToDisk(image: image, memKey: mk)
+            writeToDisk(image: image, memKey: mk, in: cacheDir)
 
             return image
         }.value
@@ -77,25 +80,23 @@ enum ArtworkThumbnailCache {
     // MARK: - Private helpers
 
     private static func memKey(_ key: String, _ pointSize: CGFloat) -> NSString {
-        "\(key)#\(Int(pointSize))" as NSString
+        // Use '_' as separator — UUID keys contain only hex digits and '-',
+        // never '_', so the separator is unambiguous and the resulting disk
+        // filename (key + ".jpg") is identical to the old "#"→"_" scheme.
+        "\(key)_\(Int(pointSize))" as NSString
     }
 
-    /// Disk filename: replace '#' (size separator) with '_', append .jpg.
-    /// The result is a valid filename on every Apple filesystem.
-    private static func diskURL(for memKey: NSString) -> URL {
-        let filename = (memKey as String).replacingOccurrences(of: "#", with: "_") + ".jpg"
-        return diskCacheDir.appendingPathComponent(filename)
-    }
-
-    nonisolated private static func readFromDisk(memKey: NSString) -> UIImage? {
-        guard let data = try? Data(contentsOf: diskURL(for: memKey)) else { return nil }
+    nonisolated private static func readFromDisk(memKey: NSString, in cacheDir: URL) -> UIImage? {
+        let url = cacheDir.appendingPathComponent((memKey as String) + ".jpg")
+        guard let data = try? Data(contentsOf: url) else { return nil }
         return UIImage(data: data)
     }
 
-    nonisolated private static func writeToDisk(image: UIImage, memKey: NSString) {
+    nonisolated private static func writeToDisk(image: UIImage, memKey: NSString, in cacheDir: URL) {
         guard let data = image.jpegData(compressionQuality: 0.85) else { return }
+        let url = cacheDir.appendingPathComponent((memKey as String) + ".jpg")
         // .atomic prevents a torn file if the process is killed mid-write.
-        try? data.write(to: diskURL(for: memKey), options: .atomic)
+        try? data.write(to: url, options: .atomic)
     }
 
     /// ImageIO downsampling — decodes straight to thumbnail size without

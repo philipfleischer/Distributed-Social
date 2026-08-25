@@ -18,40 +18,23 @@ struct HomeView: View {
     @Query(filter: #Predicate<MediaItem> { $0.isFavorite }) private var favorites: [MediaItem]
     @State private var searchText = ""
 
+    // Cached derived values — recomputed only when the underlying query
+    // results change, not on every unrelated re-render (theme change,
+    // allItems import tick, etc.).
+    @State private var recentlyPlayedCache: [Playlist] = []
+    @State private var popularCache: [Playlist] = []
+    @State private var favoritesPreviewCache: [MediaItem] = []
+    @State private var audioCount: Int = 0
+    @State private var videoCount: Int = 0
+
+    private var singlesPlaylist: Playlist? {
+        playlists.first { $0.name == "Singles" && $0.mediaTypeRaw == "audio" }
+    }
+
     private var theme: AppTheme { themeStore.theme }
-
-    private var recentlyPlayed: [Playlist] {
-        Array(playlists
-            .filter { $0.lastPlayedDate != nil }
-            .sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
-            .prefix(6))
-    }
-
-    private var popular: [Playlist] {
-        Array(playlists
-            .filter { $0.playCount > 0 }
-            .sorted { $0.playCount > $1.playCount }
-            .prefix(6))
-    }
-
-    /// Single pass through allItems to get both counts simultaneously.
-    private var libraryCounts: (audio: Int, video: Int) {
-        allItems.reduce(into: (audio: 0, video: 0)) { acc, item in
-            if item.mediaTypeRaw == "audio" { acc.audio += 1 }
-            else { acc.video += 1 }
-        }
-    }
 
     /// Fixed per app launch, so the favorites picks reshuffle on each run.
     private static let sessionSeed = Int.random(in: 1...0x7FFFFFFF)
-
-    /// Six favorites chosen pseudo-randomly, stable within a launch but
-    /// different on the next one — surfaces fresh favorites every run.
-    private var favoritesPreview: [MediaItem] {
-        Array(favorites
-            .sorted { sessionRank(of: $0.id) < sessionRank(of: $1.id) }
-            .prefix(6))
-    }
 
     private func sessionRank(of id: UUID) -> Int {
         var hash = HomeView.sessionSeed
@@ -59,6 +42,32 @@ struct HomeView: View {
             hash = (hash &* 31 &+ Int(scalar.value)) & 0x7FFFFFFF
         }
         return hash
+    }
+
+    private func refreshPlaylistCaches() {
+        recentlyPlayedCache = Array(playlists
+            .filter { $0.lastPlayedDate != nil }
+            .sorted { ($0.lastPlayedDate ?? .distantPast) > ($1.lastPlayedDate ?? .distantPast) }
+            .prefix(6))
+        popularCache = Array(playlists
+            .filter { $0.playCount > 0 }
+            .sorted { $0.playCount > $1.playCount }
+            .prefix(6))
+    }
+
+    private func refreshFavoritesCache() {
+        favoritesPreviewCache = Array(favorites
+            .sorted { sessionRank(of: $0.id) < sessionRank(of: $1.id) }
+            .prefix(6))
+    }
+
+    private func refreshCounts() {
+        let counts = allItems.reduce(into: (audio: 0, video: 0)) { acc, item in
+            if item.mediaTypeRaw == "audio" { acc.audio += 1 }
+            else { acc.video += 1 }
+        }
+        audioCount = counts.audio
+        videoCount = counts.video
     }
 
     var body: some View {
@@ -73,21 +82,28 @@ struct HomeView: View {
             .summerBackground()
             .navigationTitle("Home")
             .searchable(text: $searchText, prompt: "Playlists, songs, artists…")
+            .onAppear {
+                refreshPlaylistCaches()
+                refreshFavoritesCache()
+                refreshCounts()
+            }
+            .onChange(of: playlists) { _, _ in refreshPlaylistCaches() }
+            .onChange(of: favorites) { _, _ in refreshFavoritesCache() }
+            .onChange(of: allItems.count) { _, _ in refreshCounts() }
         }
     }
 
     // MARK: - Default home content
 
     private var homeContent: some View {
-        let counts = libraryCounts
-        return VStack(alignment: .leading, spacing: 28) {
-            if !popular.isEmpty {
-                playlistRow(title: "Popular", playlists: popular)
+        VStack(alignment: .leading, spacing: 28) {
+            if !popularCache.isEmpty {
+                playlistRow(title: "Popular", playlists: popularCache)
             }
-            if !recentlyPlayed.isEmpty {
-                playlistRow(title: "Recently Played", playlists: recentlyPlayed)
+            if !recentlyPlayedCache.isEmpty {
+                playlistRow(title: "Recently Played", playlists: recentlyPlayedCache)
             }
-            if popular.isEmpty && recentlyPlayed.isEmpty {
+            if popularCache.isEmpty && recentlyPlayedCache.isEmpty {
                 Text("Play a playlist and it will show up here.")
                     .font(.subheadline)
                     .foregroundStyle(theme.textSecondary)
@@ -96,6 +112,10 @@ struct HomeView: View {
 
             if !favorites.isEmpty {
                 favoritesRow
+            }
+
+            if let singles = singlesPlaylist {
+                singlesRow(for: singles)
             }
 
             VStack(alignment: .leading, spacing: 14) {
@@ -110,7 +130,7 @@ struct HomeView: View {
                     } label: {
                         libraryBox(
                             title: "Audio",
-                            count: counts.audio,
+                            count: audioCount,
                             systemImage: "music.note.list",
                             colors: [Color.skyBlue, Color.deepSky]
                         )
@@ -120,7 +140,7 @@ struct HomeView: View {
                     } label: {
                         libraryBox(
                             title: "Video",
-                            count: counts.video,
+                            count: videoCount,
                             systemImage: "film",
                             colors: [Color.sakuraPink, Color(red: 0.859, green: 0.443, blue: 0.576)]
                         )
@@ -225,10 +245,10 @@ struct HomeView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
-                    ForEach(favoritesPreview) { item in
+                    ForEach(favoritesPreviewCache) { item in
                         Button {
                             playerVM.currentPlaylistID = nil
-                            playerVM.play(item: item, in: favoritesPreview)
+                            playerVM.play(item: item, in: favoritesPreviewCache)
                         } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 MediaArtworkView(item: item, size: 110)
@@ -269,6 +289,51 @@ struct HomeView: View {
                 .padding(.horizontal)
             }
         }
+    }
+
+    private func singlesRow(for playlist: Playlist) -> some View {
+        let items = playlist.sortedItems.compactMap(\.mediaItem)
+        guard !items.isEmpty else { return AnyView(EmptyView()) }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Singles")
+                        .font(.title2).fontWeight(.semibold)
+                        .foregroundStyle(theme.textPrimary)
+                    Spacer()
+                    NavigationLink {
+                        PlaylistDetailView(playlist: playlist)
+                    } label: {
+                        Text("See All")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(theme.textSecondary)
+                    }
+                }
+                .padding(.horizontal)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(items.prefix(12)) { item in
+                            Button {
+                                playerVM.currentPlaylistID = playlist.id
+                                playerVM.play(item: item, in: items)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    MediaArtworkView(item: item, size: 110)
+                                    Text(item.displayName)
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(theme.textPrimary)
+                                        .lineLimit(1)
+                                        .frame(width: 110, alignment: .leading)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+        )
     }
 
     private func playlistRow(title: String, playlists: [Playlist]) -> some View {

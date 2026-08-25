@@ -68,9 +68,30 @@ final class MediaLibraryService: MediaLibraryServiceProtocol {
             return Set(urls.map(\.lastPathComponent))
         }.value
 
+        // Populate fast-path cache so isFileMissing skips per-item disk I/O.
+        MediaItem.knownPresentFilenames = existingFilenames
+
         let all = (try? context.fetch(FetchDescriptor<MediaItem>())) ?? []
-        for item in all where !existingFilenames.contains(item.filename) {
-            deleteMediaItem(item, in: context)
+        let missing = all.filter { !existingFilenames.contains($0.filename) }
+        guard !missing.isEmpty else { return }
+
+        // Collect all affected playlists and delete everything in one pass,
+        // then renumber each playlist once instead of once per deleted item.
+        var allEntries: [PlaylistItem] = []
+        var playlistMap: [ObjectIdentifier: Playlist] = [:]
+        for item in missing {
+            try? fileImportService.deleteFile(item)
+            let entries = item.playlistItems ?? []
+            allEntries.append(contentsOf: entries)
+            for entry in entries {
+                if let pl = entry.playlist { playlistMap[ObjectIdentifier(pl)] = pl }
+                context.delete(entry)
+            }
+            context.delete(item)
+        }
+        let removedIDs = Set(allEntries.map(\.id))
+        for playlist in playlistMap.values {
+            renumber(playlist, excluding: removedIDs)
         }
     }
 
@@ -87,6 +108,31 @@ final class MediaLibraryService: MediaLibraryServiceProtocol {
         for playlist in affectedPlaylists {
             renumber(playlist, excluding: removedIDs)
         }
+    }
+
+    func deleteAudioItemsNotInAnyPlaylist(in context: ModelContext) {
+        let audioItems = (try? context.fetch(FetchDescriptor<MediaItem>(
+            predicate: #Predicate { $0.mediaTypeRaw == "audio" }
+        ))) ?? []
+        let allPlaylistItems = (try? context.fetch(FetchDescriptor<PlaylistItem>())) ?? []
+        let itemsInPlaylists = Set(allPlaylistItems.compactMap { $0.mediaItem?.id })
+        for item in audioItems where !itemsInPlaylists.contains(item.id) {
+            deleteMediaItem(item, in: context)
+        }
+    }
+
+    func addItemToSinglesPlaylist(_ item: MediaItem, in context: ModelContext) {
+        let allPlaylists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
+        let singles: Playlist
+        if let existing = allPlaylists.first(where: { $0.name == "Singles" && $0.mediaType == .audio }) {
+            singles = existing
+        } else {
+            singles = Playlist(name: "Singles", mediaType: .audio)
+            context.insert(singles)
+        }
+        let existingIDs = Set((singles.orderedItems ?? []).compactMap { $0.mediaItem?.id })
+        guard !existingIDs.contains(item.id) else { return }
+        addItem(item, toPlaylist: singles, in: context)
     }
 
     /// Reassigns contiguous sort orders, skipping rows that are being
