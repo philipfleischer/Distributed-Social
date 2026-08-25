@@ -39,6 +39,8 @@ struct Distributed_SocialApp: App {
                     // the background — recheck cached missing-file states.
                     if phase == .active {
                         MediaItem.fileCheckGeneration &+= 1
+                        // Clear the bulk-scan set so the next cleanUpMissingFiles repopulates it.
+                        MediaItem.knownPresentFilenames = nil
                     }
                 }
         }

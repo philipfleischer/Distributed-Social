@@ -30,10 +30,20 @@ final class MediaItem {
     /// missing-file checks are re-verified.
     static var fileCheckGeneration: Int = 0
 
+    /// Populated by `MediaLibraryService.cleanUpMissingFiles` after the startup
+    /// directory scan. While set, `isFileMissing` does an O(1) set lookup
+    /// instead of per-item disk I/O. Cleared on foreground so the next scan refreshes it.
+    static var knownPresentFilenames: Set<String>? = nil
+
     @Transient private var missingCheckGeneration: Int = -1
     @Transient private var missingCached: Bool = false
 
     var isFileMissing: Bool {
+        // Fast path: bulk-scan result available — O(1), no disk I/O.
+        if let present = MediaItem.knownPresentFilenames {
+            return !present.contains(filename)
+        }
+        // Slow path: per-item generation-based cache.
         if missingCheckGeneration != MediaItem.fileCheckGeneration {
             missingCached = !FileManager.default.fileExists(atPath: localURL.path)
             missingCheckGeneration = MediaItem.fileCheckGeneration

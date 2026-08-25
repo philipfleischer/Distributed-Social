@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -62,6 +63,7 @@ struct ContentView: View {
         .task {
             await mediaLibraryService.cleanUpMissingFiles(in: modelContext)
             mediaLibraryService.cleanUpOrphanedPlaylistItems(in: modelContext)
+            mediaLibraryService.deleteAudioItemsNotInAnyPlaylist(in: modelContext)
             await fileImportService.backfillMetadataIfNeeded(in: modelContext)
             await fileImportService.downscaleArtworkIfNeeded(in: modelContext)
         }
