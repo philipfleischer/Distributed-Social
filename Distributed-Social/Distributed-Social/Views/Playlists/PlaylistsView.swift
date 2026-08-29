@@ -48,7 +48,11 @@ struct PlaylistsView: View {
     private var theme: AppTheme { themeStore.theme }
 
     private var audioPlaylists: [Playlist] {
-        playlists.filter { $0.mediaType == .audio }
+        playlists.filter { $0.mediaType == .audio && $0.name != "Singles" }
+    }
+
+    private var singlesPlaylist: Playlist? {
+        playlists.first { $0.name == "Singles" && $0.mediaType == .audio }
     }
 
     private var filteredPlaylists: [Playlist] {
@@ -191,6 +195,25 @@ struct PlaylistsView: View {
                 )
             }
             .buttonStyle(.plain)
+
+            if let singles = singlesPlaylist {
+                let singlesCount = singles.orderedItems?.count ?? 0
+                NavigationLink {
+                    PlaylistDetailView(playlist: singles)
+                } label: {
+                    specialTile(
+                        title: "Singles",
+                        subtitle: "\(singlesCount) song\(singlesCount == 1 ? "" : "s")",
+                        content: AnyView(
+                            Image(systemName: "music.note")
+                                .font(.system(size: 44, weight: .semibold))
+                                .foregroundStyle(.white)
+                        ),
+                        background: Color(red: 0.18, green: 0.10, blue: 0.28)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 

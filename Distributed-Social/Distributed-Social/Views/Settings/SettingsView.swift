@@ -97,6 +97,7 @@ struct SettingsView: View {
                     Task {
                         await importVM.handlePickedFiles(urls) { item in
                             modelContext.insert(item)
+                            mediaLibraryService.addItemToSinglesPlaylist(item, in: modelContext)
                         }
                     }
                 }
