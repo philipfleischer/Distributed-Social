@@ -67,6 +67,7 @@ struct VideoLibraryView: View {
         .summerBackground()
         .navigationTitle("Video")
         .searchable(text: $viewModel.searchText)
+        .disableSwipeBack()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

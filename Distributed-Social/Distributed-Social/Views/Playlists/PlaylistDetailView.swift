@@ -35,6 +35,28 @@ struct PlaylistDetailView: View {
         (playlist.orderedItems ?? []).compactMap { $0.mediaItem?.duration }.reduce(0, +)
     }
 
+    private var searchBarRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(theme.textSecondary)
+            TextField("Search in playlist", text: $searchText)
+                .foregroundStyle(theme.textPrimary)
+                .tint(theme.textPrimary)
+            if !searchText.isEmpty {
+                Button { searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(theme.chipFill, in: RoundedRectangle(cornerRadius: 10))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+    }
+
     var body: some View {
         let sortedItems = sortedItemsCache.isEmpty ? playlist.sortedItems : sortedItemsCache
         let visibleItems = visibleItems(in: sortedItems)
@@ -47,6 +69,7 @@ struct PlaylistDetailView: View {
                     description: Text("Add songs via the library's context menu.")
                 )
             } else {
+                searchBarRow
                 Section {
                     ForEach(visibleItems) { pi in
                         if let item = pi.mediaItem {
@@ -72,7 +95,7 @@ struct PlaylistDetailView: View {
         .contentMargins(.bottom, 120, for: .scrollContent)
         .summerBackground()
         .navigationTitle(playlist.name)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search in playlist")
+        .disableSwipeBack()
         .toolbar {
             if isSelectMode {
                 ToolbarItem(placement: .topBarLeading) {
