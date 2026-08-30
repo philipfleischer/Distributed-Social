@@ -27,11 +27,33 @@ struct AudioLibraryView: View {
         allItems.filter { selectedIDs.contains($0.id) && !$0.isFileMissing }
     }
 
+    private var searchBarRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(theme.textSecondary)
+            TextField("Search songs", text: $viewModel.searchText)
+                .foregroundStyle(theme.textPrimary)
+                .tint(theme.textPrimary)
+            if !viewModel.searchText.isEmpty {
+                Button { viewModel.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(theme.chipFill, in: RoundedRectangle(cornerRadius: 10))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+    }
+
     var body: some View {
         let items = viewModel.filteredItems(allItems)
 
         Group {
-            if items.isEmpty {
+            if allItems.isEmpty {
                 ContentUnavailableView(
                     "No Audio Files",
                     systemImage: "music.note.list",
@@ -39,24 +61,7 @@ struct AudioLibraryView: View {
                 )
             } else {
                 List {
-                    // Inline select banner shown when search has results
-                    if !viewModel.searchText.isEmpty && !isSelectMode {
-                        HStack {
-                            Text("\(items.count) result\(items.count == 1 ? "" : "s")")
-                                .font(.subheadline)
-                                .foregroundStyle(theme.textSecondary)
-                            Spacer()
-                            Button {
-                                isSelectMode = true
-                            } label: {
-                                Label("Select", systemImage: "checkmark.circle")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(theme.textPrimary)
-                            }
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                    }
+                    searchBarRow
 
                     ForEach(items) { item in
                         let isMissing = item.isFileMissing
@@ -99,7 +104,7 @@ struct AudioLibraryView: View {
         }
         .summerBackground()
         .navigationTitle("Audio")
-        .searchable(text: $viewModel.searchText)
+        .disableSwipeBack()
         .toolbar {
             if isSelectMode {
                 ToolbarItem(placement: .topBarLeading) {

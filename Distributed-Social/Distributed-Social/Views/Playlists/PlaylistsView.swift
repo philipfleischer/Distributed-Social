@@ -34,11 +34,11 @@ struct PlaylistsView: View {
 
     @State private var isSelectMode = false
     @State private var selectedPlaylists: Set<UUID> = []
+    @State private var isFavoritesSelected = false
     @State private var combinedItems: [MediaItem] = []
     @State private var showCombinedPlaylist = false
 
     @State private var showSettings = false
-    @State private var isAtTop = true
 
     private let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -48,7 +48,11 @@ struct PlaylistsView: View {
     private var theme: AppTheme { themeStore.theme }
 
     private var audioPlaylists: [Playlist] {
-        playlists.filter { $0.mediaType == .audio }
+        playlists.filter { $0.mediaType == .audio && $0.name != "Singles" }
+    }
+
+    private var singlesPlaylist: Playlist? {
+        playlists.first { $0.name == "Singles" && $0.mediaType == .audio }
     }
 
     private var filteredPlaylists: [Playlist] {
@@ -74,42 +78,40 @@ struct PlaylistsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 120)
             }
-            .onScrollGeometryChange(for: Bool.self) { geo in
-                geo.contentOffset.y + geo.contentInsets.top <= 10
-            } action: { _, newIsAtTop in
-                withAnimation(.easeInOut(duration: 0.2)) { isAtTop = newIsAtTop }
-            }
             .summerBackground()
             .navigationTitle("")
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Playlist name")
+            .disableSwipeBack()
             .toolbar {
                 if isSelectMode {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Cancel") {
                             isSelectMode = false
+                            isFavoritesSelected = false
                             selectedPlaylists = []
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            let selected = audioPlaylists.filter { selectedPlaylists.contains($0.id) }
-                            let raw = selected.flatMap { $0.sortedItems.compactMap(\.mediaItem) }
+                            let selected = playlists
+                                .filter { $0.mediaType == .audio && selectedPlaylists.contains($0.id) }
+                            var raw = selected.flatMap { $0.sortedItems.compactMap(\.mediaItem) }
+                            if isFavoritesSelected { raw.append(contentsOf: favorites) }
                             var seen = Set<UUID>()
                             combinedItems = raw.filter { seen.insert($0.id).inserted }
                             isSelectMode = false
+                            isFavoritesSelected = false
                             selectedPlaylists = []
                             showCombinedPlaylist = true
                         } label: {
                             Image(systemName: "checkmark")
                         }
-                        .disabled(selectedPlaylists.isEmpty)
+                        .disabled(selectedPlaylists.isEmpty && !isFavoritesSelected)
                     }
                 } else {
-                    if isAtTop {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button { showSettings = true } label: {
-                                Image(systemName: "gear")
-                            }
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { showSettings = true } label: {
+                            Image(systemName: "gear")
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
@@ -160,37 +162,95 @@ struct PlaylistsView: View {
 
     private var specialTilesSection: some View {
         LazyVGrid(columns: columns, spacing: 20) {
-            NavigationLink {
-                FavoritesView()
-            } label: {
-                specialTile(
-                    title: "Favourites",
-                    subtitle: "\(favorites.count) song\(favorites.count == 1 ? "" : "s")",
-                    content: AnyView(
-                        Image(systemName: "heart.fill")
-                            .font(.system(size: 44, weight: .semibold))
-                            .foregroundStyle(.red)
-                    ),
-                    background: Color.black
-                )
+            // Favourites
+            if isSelectMode {
+                Button {
+                    isFavoritesSelected.toggle()
+                } label: {
+                    ZStack(alignment: .topLeading) {
+                        specialTile(
+                            title: "Favourites",
+                            subtitle: "\(favorites.count) song\(favorites.count == 1 ? "" : "s")",
+                            content: AnyView(Image(systemName: "heart.fill").font(.system(size: 44, weight: .semibold)).foregroundStyle(.red)),
+                            background: Color.black
+                        )
+                        .opacity(isFavoritesSelected ? 1.0 : 0.55)
+                        Image(systemName: isFavoritesSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.title2)
+                            .foregroundStyle(isFavoritesSelected ? Color.blue : theme.textSecondary)
+                            .padding(6)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                }
+                .buttonStyle(.plain)
+            } else {
+                NavigationLink {
+                    FavoritesView()
+                } label: {
+                    specialTile(
+                        title: "Favourites",
+                        subtitle: "\(favorites.count) song\(favorites.count == 1 ? "" : "s")",
+                        content: AnyView(Image(systemName: "heart.fill").font(.system(size: 44, weight: .semibold)).foregroundStyle(.red)),
+                        background: Color.black
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
-            NavigationLink {
-                AudioLibraryView()
-            } label: {
-                specialTile(
-                    title: "All Songs",
-                    subtitle: "\(allAudioItems.count) song\(allAudioItems.count == 1 ? "" : "s")",
-                    content: AnyView(
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 44, weight: .semibold))
-                            .foregroundStyle(.white)
-                    ),
-                    background: Color(red: 0.12, green: 0.12, blue: 0.18)
-                )
+            // All Songs — not selectable, hidden in select mode to avoid confusion
+            if !isSelectMode {
+                NavigationLink {
+                    AudioLibraryView()
+                } label: {
+                    specialTile(
+                        title: "All Songs",
+                        subtitle: "\(allAudioItems.count) song\(allAudioItems.count == 1 ? "" : "s")",
+                        content: AnyView(Image(systemName: "music.note.list").font(.system(size: 44, weight: .semibold)).foregroundStyle(.white)),
+                        background: Color(red: 0.12, green: 0.12, blue: 0.18)
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            // Singles
+            if let singles = singlesPlaylist {
+                let singlesCount = singles.orderedItems?.count ?? 0
+                let isSinglesSelected = selectedPlaylists.contains(singles.id)
+                if isSelectMode {
+                    Button {
+                        if isSinglesSelected { selectedPlaylists.remove(singles.id) }
+                        else { selectedPlaylists.insert(singles.id) }
+                    } label: {
+                        ZStack(alignment: .topLeading) {
+                            specialTile(
+                                title: "Singles",
+                                subtitle: "\(singlesCount) song\(singlesCount == 1 ? "" : "s")",
+                                content: AnyView(Image(systemName: "music.note").font(.system(size: 44, weight: .semibold)).foregroundStyle(.white)),
+                                background: Color(red: 0.18, green: 0.10, blue: 0.28)
+                            )
+                            .opacity(isSinglesSelected ? 1.0 : 0.55)
+                            Image(systemName: isSinglesSelected ? "checkmark.circle.fill" : "circle")
+                                .font(.title2)
+                                .foregroundStyle(isSinglesSelected ? Color.blue : theme.textSecondary)
+                                .padding(6)
+                                .background(.ultraThinMaterial, in: Circle())
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    NavigationLink {
+                        PlaylistDetailView(playlist: singles)
+                    } label: {
+                        specialTile(
+                            title: "Singles",
+                            subtitle: "\(singlesCount) song\(singlesCount == 1 ? "" : "s")",
+                            content: AnyView(Image(systemName: "music.note").font(.system(size: 44, weight: .semibold)).foregroundStyle(.white)),
+                            background: Color(red: 0.18, green: 0.10, blue: 0.28)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -218,12 +278,6 @@ struct PlaylistsView: View {
 
     private var regularPlaylistsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if isSelectMode {
-                Text("Select playlists to combine")
-                    .font(.subheadline)
-                    .foregroundStyle(theme.textSecondary)
-            }
-
             LazyVGrid(columns: columns, spacing: 20) {
                 ForEach(filteredPlaylists) { playlist in
                     if isSelectMode {
